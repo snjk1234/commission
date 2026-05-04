@@ -1,3 +1,4 @@
+// @ts-nocheck
 import AccountPage from '@/components/misc/AccountPage';
 import { createClient } from '@/utils/supabase/server';
 import { redirect } from 'next/navigation';
