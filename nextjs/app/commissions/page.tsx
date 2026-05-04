@@ -98,6 +98,10 @@ export default function CommissionsPage() {
   const [editSales2024, setEditSales2024] = useState(0);
   const [editSales2025, setEditSales2025] = useState(0);
 
+  // Dynamic Years State
+  const [yearPrev, setYearPrev] = useState(2024);
+  const [yearCurr, setYearCurr] = useState(2025);
+
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
 
   const requestSort = (key: string) => {
@@ -173,9 +177,9 @@ export default function CommissionsPage() {
     try {
       setIsLoading(true);
       await supabase.from('commission_data')
-        .upsert({ branch_name: editingResult.branchName, year: 2024, sales: editSales2024 }, { onConflict: 'branch_name,year' });
+        .upsert({ branch_name: editingResult.branchName, year: yearPrev, sales: editSales2024 }, { onConflict: 'branch_name,year' });
       await supabase.from('commission_data')
-        .upsert({ branch_name: editingResult.branchName, year: 2025, sales: editSales2025 }, { onConflict: 'branch_name,year' });
+        .upsert({ branch_name: editingResult.branchName, year: yearCurr, sales: editSales2025 }, { onConflict: 'branch_name,year' });
       await fetchData();
       setIsResultEditModalOpen(false);
       setEditingResult(null);
@@ -199,8 +203,8 @@ export default function CommissionsPage() {
       const excelData = filteredResults.map((row, idx) => ({
         'م': idx + 1,
         'اسم الفرع': row.branchName,
-        'مبيعات 2024': row.sales2024,
-        'مبيعات 2025': row.sales2025,
+        [`مبيعات ${yearPrev}`]: row.sales2024,
+        [`مبيعات ${yearCurr}`]: row.sales2025,
         'الفارق': row.difference,
         'النمو %': row.growth,
         'نسبة العمولة %': formatNumber(row.rate * 100, 1),
@@ -294,17 +298,29 @@ export default function CommissionsPage() {
         const data = new Uint8Array(event.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
 
-        const sheet2024 = workbook.Sheets['2024'];
-        const sheet2025 = workbook.Sheets['2025'];
+        // Detect Years from sheet names
+        const sheetNames = workbook.SheetNames;
+        const years = sheetNames
+          .filter(name => /^\d{4}$/.test(name))
+          .map(Number)
+          .sort((a, b) => a - b);
 
-        if (!sheet2024 || !sheet2025) {
-          alert('يجب أن يحتوي الملف على ورقتين باسم 2024 و 2025');
+        if (years.length < 2) {
+          alert('يجب أن يحتوي الملف على ورقتين بأسماء سنوات (مثلاً 2024 و 2025)');
           setIsLoading(false);
           return;
         }
 
-        const json2024 = XLSX.utils.sheet_to_json(sheet2024, { header: 1 }) as any[][];
-        const json2025 = XLSX.utils.sheet_to_json(sheet2025, { header: 1 }) as any[][];
+        const prevYear = years[years.length - 2];
+        const currYear = years[years.length - 1];
+        setYearPrev(prevYear);
+        setYearCurr(currYear);
+
+        const sheetPrev = workbook.Sheets[String(prevYear)];
+        const sheetCurr = workbook.Sheets[String(currYear)];
+
+        const jsonPrev = XLSX.utils.sheet_to_json(sheetPrev, { header: 1 }) as any[][];
+        const jsonCurr = XLSX.utils.sheet_to_json(sheetCurr, { header: 1 }) as any[][];
 
         // Process Sheets with Normalization for matching keys
         const processSheet = (rows: any[][]) => {
@@ -318,14 +334,14 @@ export default function CommissionsPage() {
           }).filter(item => item.branchName);
         };
 
-        const clean2024 = processSheet(json2024);
-        const clean2025 = processSheet(json2025);
+        const cleanPrev = processSheet(jsonPrev);
+        const cleanCurr = processSheet(jsonCurr);
 
-        setData2024(clean2024);
-        setData2025(clean2025);
+        setData2024(cleanPrev);
+        setData2025(cleanCurr);
         
         // Calculate logic
-        performCalculations(clean2024, clean2025);
+        performCalculations(cleanPrev, cleanCurr);
         
         setIsLoading(false);
         setActiveTab('data');
@@ -626,7 +642,7 @@ export default function CommissionsPage() {
                 </div>
                 <h2 className="text-2xl font-bold mb-4 text-slate-100">ارفع ملف الإكسل</h2>
                 <p className="text-slate-400 mb-8 leading-relaxed">
-                  تأكد من أن الملف يحتوي على ورقة باسم <span className="text-blue-400 font-bold">2024</span> وورقة باسم <span className="text-blue-400 font-bold">2025</span>. 
+                  تأكد من أن الملف يحتوي على ورقتين بأسماء سنوات متتالية (مثلاً <span className="text-blue-400 font-bold">2024</span> و <span className="text-blue-400 font-bold">2025</span>). 
                   يجب أن يكون اسم الفرع في العمود الثاني والمبيعات في العمود الثالث.
                 </p>
                 
@@ -666,7 +682,7 @@ export default function CommissionsPage() {
                   <div className="p-2 bg-indigo-600/10 rounded-lg text-indigo-400 border border-indigo-500/20">
                     <FileSpreadsheet size={20} />
                   </div>
-                  <h3 className="text-xl font-bold text-slate-100">بيانات 2024</h3>
+                  <h3 className="text-xl font-bold text-slate-100">بيانات {yearPrev}</h3>
                 </div>
                 <div className="overflow-auto max-h-[500px] custom-scrollbar rounded-xl border border-slate-800/50">
                   <div className="grid grid-cols-[50px_1fr_100px] gap-0 text-slate-500 text-xs border-b border-slate-800 bg-slate-950/40 font-bold sticky top-0 z-10">
@@ -691,7 +707,7 @@ export default function CommissionsPage() {
                   <div className="p-2 bg-blue-600/10 rounded-lg text-blue-400 border border-blue-500/20">
                     <FileSpreadsheet size={20} />
                   </div>
-                  <h3 className="text-xl font-bold text-slate-100">بيانات 2025</h3>
+                  <h3 className="text-xl font-bold text-slate-100">بيانات {yearCurr}</h3>
                 </div>
                 <div className="overflow-auto max-h-[500px] custom-scrollbar rounded-xl border border-slate-800/50">
                   <div className="grid grid-cols-[50px_1fr_100px] gap-0 text-slate-500 text-xs border-b border-slate-800 bg-slate-950/40 font-bold sticky top-0 z-10">
@@ -737,8 +753,8 @@ export default function CommissionsPage() {
                     <div className="p-3 text-center border-l border-slate-800">م</div>
                     {[
                       { key: 'branchName', label: 'اسم الفرع' },
-                      { key: 'sales2024', label: '2024' },
-                      { key: 'sales2025', label: '2025' },
+                      { key: 'sales2024', label: String(yearPrev) },
+                      { key: 'sales2025', label: String(yearCurr) },
                       { key: 'difference', label: 'الفارق' },
                       { key: 'growth', label: 'النمو' },
                       { key: 'rate', label: 'العمولة %' },
@@ -1186,26 +1202,26 @@ export default function CommissionsPage() {
                 <button onClick={() => setIsResultEditModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-xl text-slate-400"><X size={24} /></button>
               </div>
               
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">مبيعات 2024</label>
-                  <input 
-                    type="number" 
-                    value={editSales2024} 
-                    onChange={(e) => setEditSales2024(Number(e.target.value))} 
-                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-blue-500 outline-none text-lg font-mono english-nums" 
-                  />
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">مبيعات {yearPrev}</label>
+                    <input 
+                      type="number" 
+                      value={editSales2024} 
+                      onChange={(e) => setEditSales2024(Number(e.target.value))} 
+                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-blue-500 outline-none text-lg font-mono english-nums" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">مبيعات {yearCurr}</label>
+                    <input 
+                      type="number" 
+                      value={editSales2025} 
+                      onChange={(e) => setEditSales2025(Number(e.target.value))} 
+                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-blue-500 outline-none text-lg font-mono english-nums" 
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">مبيعات 2025</label>
-                  <input 
-                    type="number" 
-                    value={editSales2025} 
-                    onChange={(e) => setEditSales2025(Number(e.target.value))} 
-                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-blue-500 outline-none text-lg font-mono english-nums" 
-                  />
-                </div>
-              </div>
 
               <div className="mt-10 flex gap-4">
                 <button 
