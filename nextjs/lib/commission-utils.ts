@@ -97,6 +97,7 @@ export function calculateCommissionRate(growth: number, isNew: boolean, branchNa
     return isMall ? 0.02 : 0.01;
   }
   
+  if (growth < 0) return 0;
   if (growth < 10) return 0.01;
   if (growth < 20) return 0.02;
   if (growth < 30) return 0.025;

@@ -379,7 +379,8 @@ export default function CommissionsPage() {
         difference = sales25 - sales24!;
         growth = sales24 !== 0 ? ((sales25 / sales24!) - 1) * 100 : 0;
         growth = parseFloat(growth.toFixed(2));
-        rate = calculateCommissionRate(growth, false, item25.branchName);
+        // If difference is negative, rate is always 0%
+        rate = difference < 0 ? 0 : calculateCommissionRate(growth, false, item25.branchName);
       }
 
       const commission = sales25 * rate;
@@ -550,6 +551,15 @@ export default function CommissionsPage() {
   const filteredSupervisors = useMemo(() => {
     return supervisorCalculations.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
   }, [supervisorCalculations, searchTerm]);
+
+  // Results Totals
+  const resultsTotals = useMemo(() => {
+    return filteredResults.reduce((acc, curr) => ({
+      sales2024: acc.sales2024 + curr.sales2024,
+      sales2025: acc.sales2025 + curr.sales2025,
+      commission: acc.commission + curr.commission
+    }), { sales2024: 0, sales2025: 0, commission: 0 });
+  }, [filteredResults]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 w-full mx-auto px-6 md:px-10 pb-12 transition-all duration-500" dir="rtl">
@@ -745,6 +755,21 @@ export default function CommissionsPage() {
                   <Download size={18} />
                   تصدير النتائج والأرشفة
                 </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl transition-colors">
+                  <p className="text-xs text-slate-500 uppercase font-bold mb-2">إجمالي مبيعات {yearPrev}</p>
+                  <p className="text-3xl font-black text-slate-800 dark:text-white english-nums">{formatNumber(resultsTotals.sales2024)}</p>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl transition-colors border-l-4 border-l-blue-500/50">
+                  <p className="text-xs text-slate-500 uppercase font-bold mb-2">إجمالي مبيعات {yearCurr}</p>
+                  <p className="text-3xl font-black text-slate-800 dark:text-white english-nums">{formatNumber(resultsTotals.sales2025)}</p>
+                </div>
+                <div className="bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 p-6 rounded-3xl transition-colors border-l-4 border-l-emerald-500">
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 uppercase font-bold mb-2">إجمالي العمولات</p>
+                  <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 english-nums">{formatNumber(resultsTotals.commission, 2)}</p>
+                </div>
               </div>
 
               <div className="overflow-auto max-h-[calc(100vh-350px)] custom-scrollbar rounded-2xl border border-slate-200 dark:border-slate-800/50 transition-colors">
