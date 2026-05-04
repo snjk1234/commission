@@ -7,6 +7,7 @@ import { ThemeProvider } from 'next-themes';
 import { Toaster } from '@/components/ui/toaster';
 import PostHogPageViewWrapper from '@/components/misc/PostHogPageViewWrapper';
 
+
 const meta = {
   title: 'Commission',
   description:

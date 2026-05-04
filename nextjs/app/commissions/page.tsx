@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { SUPERVISORS_DATA, calculateCommissionRate, SupervisorGroup } from '@/lib/commission-utils';
 import { createClient } from '@/utils/supabase/client';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 const supabase = createClient();
 
@@ -551,9 +552,8 @@ export default function CommissionsPage() {
   }, [supervisorCalculations, searchTerm]);
 
   return (
-    <div className="min-h-screen max-w-[1800px] mx-auto px-4 pb-12 transition-all duration-500" dir="rtl">
-      {/* Global Top Header */}
-      <header className="py-10 flex justify-between items-center border-b border-slate-800/50 mb-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 w-full mx-auto px-6 md:px-10 pb-12 transition-all duration-500" dir="rtl">
+      <header className="py-10 flex justify-between items-center border-b border-slate-200 dark:border-slate-800/50 mb-8 transition-colors duration-500">
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -562,12 +562,12 @@ export default function CommissionsPage() {
           <h1 className="text-4xl font-black bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent mb-1 uppercase tracking-tight">
             إدارة العمولات
           </h1>
-          <p className="text-slate-500 text-sm font-medium">نظام تحليل المبيعات واحتساب عمولات الفروع والمشرفين بدقة متناهية</p>
+          <p className="text-slate-600 dark:text-slate-500 text-sm font-medium">نظام تحليل المبيعات واحتساب عمولات الفروع والمشرفين بدقة متناهية</p>
         </motion.div>
         
-        {/* Placeholder for additional header info if needed */}
         <div className="flex items-center gap-4">
-          <div className="h-10 w-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400">
+          <ThemeToggle />
+          <div className="h-10 w-10 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-400 shadow-sm transition-colors duration-500">
             <Calculator size={20} />
           </div>
         </div>
@@ -580,19 +580,19 @@ export default function CommissionsPage() {
             {/* Sidebar content starting with search */}
 
           {/* Search Box */}
-          <div className="bg-slate-900/40 backdrop-blur-2xl border border-slate-800 p-2 rounded-3xl shadow-xl relative group overflow-hidden">
-            <Search className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-400 transition-colors" size={20} />
+          <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 rounded-3xl shadow-xl relative group overflow-hidden transition-colors duration-500">
+            <Search className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition-colors" size={20} />
             <input 
               type="text" 
               placeholder="ابحث..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-950/40 border border-transparent rounded-2xl pr-12 pl-10 py-3 text-xs text-slate-200 focus:outline-none focus:border-blue-500/30 transition-all placeholder:text-slate-600 lg:opacity-0 group-hover/sidebar:opacity-100"
+              className="w-full bg-slate-50 dark:bg-slate-950/40 border border-transparent rounded-2xl pr-12 pl-10 py-3 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-blue-500/30 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 lg:opacity-0 group-hover/sidebar:opacity-100"
             />
           </div>
 
           {/* Navigation Tabs */}
-          <nav className="bg-slate-900/40 backdrop-blur-2xl border border-slate-800 p-2 rounded-3xl shadow-xl flex flex-col gap-1">
+          <nav className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 rounded-3xl shadow-xl flex flex-col gap-1 transition-colors duration-500">
             {[
               { id: 'upload', label: 'رفع الملف', icon: Upload },
               { id: 'data', label: 'البيانات', icon: FileSpreadsheet },
@@ -606,12 +606,12 @@ export default function CommissionsPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 relative whitespace-nowrap ${
                   activeTab === tab.id 
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' 
-                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/40'
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' 
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/40'
                 }`}
               >
                 <div className="flex-shrink-0">
-                  <tab.icon size={22} className={activeTab === tab.id ? 'text-white' : 'text-slate-500'} />
+                  <tab.icon size={22} className={activeTab === tab.id ? 'text-white' : 'text-slate-400 dark:text-slate-500'} />
                 </div>
                 <span className="font-bold text-sm lg:opacity-0 group-hover/sidebar:opacity-100 transition-all duration-300">
                   {tab.label}
@@ -634,14 +634,14 @@ export default function CommissionsPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900/40 backdrop-blur-2xl border border-slate-800 rounded-3xl p-12 text-center shadow-2xl"
+              className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center shadow-2xl transition-colors duration-500"
             >
               <div className="max-w-md mx-auto">
-                <div className="w-24 h-24 bg-blue-600/10 rounded-3xl flex items-center justify-center mx-auto mb-6 text-blue-400 border border-blue-500/20">
+                <div className="w-24 h-24 bg-blue-600/5 dark:bg-blue-600/10 rounded-3xl flex items-center justify-center mx-auto mb-6 text-blue-600 dark:text-blue-400 border border-blue-500/20">
                   <Upload size={40} />
                 </div>
-                <h2 className="text-2xl font-bold mb-4 text-slate-100">ارفع ملف الإكسل</h2>
-                <p className="text-slate-400 mb-8 leading-relaxed">
+                <h2 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-100">ارفع ملف الإكسل</h2>
+                <p className="text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">
                   تأكد من أن الملف يحتوي على ورقتين بأسماء سنوات متتالية (مثلاً <span className="text-blue-400 font-bold">2024</span> و <span className="text-blue-400 font-bold">2025</span>). 
                   يجب أن يكون اسم الفرع في العمود الثاني والمبيعات في العمود الثالث.
                 </p>
@@ -677,50 +677,50 @@ export default function CommissionsPage() {
               animate={{ opacity: 1, x: 0 }}
               className="grid md:grid-cols-2 gap-8"
             >
-              <div className="bg-slate-900/40 backdrop-blur-2xl border border-slate-800 rounded-3xl p-6 h-fit shadow-2xl">
+              <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-6 h-fit shadow-2xl transition-colors duration-500">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-indigo-600/10 rounded-lg text-indigo-400 border border-indigo-500/20">
+                  <div className="p-2 bg-indigo-600/5 dark:bg-indigo-600/10 rounded-lg text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
                     <FileSpreadsheet size={20} />
                   </div>
-                  <h3 className="text-xl font-bold text-slate-100">بيانات {yearPrev}</h3>
+                  <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">بيانات {yearPrev}</h3>
                 </div>
-                <div className="overflow-auto max-h-[500px] custom-scrollbar rounded-xl border border-slate-800/50">
-                  <div className="grid grid-cols-[50px_1fr_100px] gap-0 text-slate-500 text-xs border-b border-slate-800 bg-slate-950/40 font-bold sticky top-0 z-10">
-                    <div className="p-3 text-center border-l border-slate-800">م</div>
-                    <div className="p-3 text-right border-l border-slate-800">الفرع</div>
+                <div className="overflow-auto max-h-[calc(100vh-450px)] custom-scrollbar rounded-xl border border-slate-200 dark:border-slate-800/50 transition-colors">
+                  <div className="grid grid-cols-[50px_1fr_100px] gap-0 text-slate-500 text-sm border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-bold sticky top-0 z-10 transition-colors">
+                    <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800">م</div>
+                    <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">الفرع</div>
                     <div className="p-3 text-right">المبيعات</div>
                   </div>
-                  <div className="divide-y divide-slate-800/50 bg-slate-900/20">
+                  <div className="divide-y divide-slate-200 dark:divide-slate-800/50 bg-white dark:bg-slate-900/20">
                     {data2024.filter(r => r.branchName.toLowerCase().includes(searchTerm.toLowerCase())).map((row, i) => (
-                      <div key={i} className="grid grid-cols-[50px_1fr_100px] gap-0 items-center text-xs text-slate-300 hover:bg-slate-800/40 transition-colors">
-                        <div className="p-3 text-center border-l border-slate-800/50 bg-slate-950/10 font-mono english-nums text-slate-500">{i + 1}</div>
-                        <div className="p-3 text-right border-l border-slate-800/50 truncate">{row.branchName}</div>
-                        <div className="p-3 text-right font-mono english-nums text-slate-400">{formatNumber(row.sales)}</div>
+                      <div key={i} className="grid grid-cols-[50px_1fr_100px] gap-0 items-center text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/40 transition-colors">
+                        <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-950/10 font-mono english-nums text-slate-400 dark:text-slate-500">{i + 1}</div>
+                        <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 truncate">{row.branchName}</div>
+                        <div className="p-3 text-right font-mono english-nums text-slate-600 dark:text-slate-400">{formatNumber(row.sales)}</div>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
 
-              <div className="bg-slate-900/40 backdrop-blur-2xl border border-slate-800 rounded-3xl p-6 h-fit shadow-2xl">
+              <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-6 h-fit shadow-2xl transition-colors duration-500">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-blue-600/10 rounded-lg text-blue-400 border border-blue-500/20">
+                  <div className="p-2 bg-blue-600/5 dark:bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 border border-blue-500/20">
                     <FileSpreadsheet size={20} />
                   </div>
-                  <h3 className="text-xl font-bold text-slate-100">بيانات {yearCurr}</h3>
+                  <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">بيانات {yearCurr}</h3>
                 </div>
-                <div className="overflow-auto max-h-[500px] custom-scrollbar rounded-xl border border-slate-800/50">
-                  <div className="grid grid-cols-[50px_1fr_100px] gap-0 text-slate-500 text-xs border-b border-slate-800 bg-slate-950/40 font-bold sticky top-0 z-10">
-                    <div className="p-3 text-center border-l border-slate-800">م</div>
-                    <div className="p-3 text-right border-l border-slate-800">الفرع</div>
+                <div className="overflow-auto max-h-[calc(100vh-450px)] custom-scrollbar rounded-xl border border-slate-200 dark:border-slate-800/50 transition-colors">
+                  <div className="grid grid-cols-[50px_1fr_100px] gap-0 text-slate-500 text-sm border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-bold sticky top-0 z-10 transition-colors">
+                    <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800">م</div>
+                    <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">الفرع</div>
                     <div className="p-3 text-right">المبيعات</div>
                   </div>
-                  <div className="divide-y divide-slate-800/50 bg-slate-900/20">
+                  <div className="divide-y divide-slate-200 dark:divide-slate-800/50 bg-white dark:bg-slate-900/20">
                     {filteredData2025.map((row, i) => (
-                      <div key={i} className="grid grid-cols-[50px_1fr_100px] gap-0 items-center text-xs text-slate-300 hover:bg-slate-800/40 transition-colors">
-                        <div className="p-3 text-center border-l border-slate-800/50 bg-slate-950/10 font-mono english-nums text-slate-500">{i + 1}</div>
-                        <div className="p-3 text-right border-l border-slate-800/50 truncate">{row.branchName}</div>
-                        <div className="p-3 text-right font-mono english-nums text-slate-400">{formatNumber(row.sales)}</div>
+                      <div key={i} className="grid grid-cols-[50px_1fr_100px] gap-0 items-center text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/40 transition-colors">
+                        <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-950/10 font-mono english-nums text-slate-400 dark:text-slate-500">{i + 1}</div>
+                        <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 truncate">{row.branchName}</div>
+                        <div className="p-3 text-right font-mono english-nums text-slate-600 dark:text-slate-400">{formatNumber(row.sales)}</div>
                       </div>
                     ))}
                   </div>
@@ -734,10 +734,10 @@ export default function CommissionsPage() {
               key="results"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-slate-900/40 backdrop-blur-2xl border border-slate-800 rounded-3xl p-8 overflow-hidden shadow-2xl"
+              className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-8 overflow-hidden shadow-2xl transition-colors duration-500"
             >
               <div className="flex justify-between items-center mb-8">
-                <h3 className="text-2xl font-bold text-slate-100">تقرير العمولات المحتسبة</h3>
+                <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">تقرير العمولات المحتسبة</h3>
                 <button 
                   onClick={handleExportAndArchive}
                   className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-blue-900/20 font-bold"
@@ -747,10 +747,10 @@ export default function CommissionsPage() {
                 </button>
               </div>
 
-              <div className="overflow-x-auto custom-scrollbar">
-                <div className="min-w-[1200px]">
-                  <div className="grid grid-cols-[50px_1.2fr_100px_100px_100px_85px_85px_110px_1.2fr_120px] gap-0 text-[13px] text-slate-500 border-b border-slate-800 font-bold uppercase tracking-wider bg-slate-950/20">
-                    <div className="p-3 text-center border-l border-slate-800">م</div>
+              <div className="overflow-auto max-h-[calc(100vh-350px)] custom-scrollbar rounded-2xl border border-slate-200 dark:border-slate-800/50 transition-colors">
+                <div className="min-w-[1400px]">
+                  <div className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 text-sm text-slate-500 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-950 sticky top-0 z-10 transition-colors">
+                    <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800">م</div>
                     {[
                       { key: 'branchName', label: 'اسم الفرع' },
                       { key: 'sales2024', label: String(yearPrev) },
@@ -764,37 +764,37 @@ export default function CommissionsPage() {
                       <button 
                         key={col.key}
                         onClick={() => requestSort(col.key)}
-                        className="p-3 text-right border-l border-slate-800 flex items-center justify-between hover:bg-slate-800/40 transition-colors group"
+                        className="p-3 text-right border-l border-slate-200 dark:border-slate-800 flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-800/40 transition-colors group"
                       >
                         {col.label}
                         <div className="flex flex-col opacity-0 group-hover:opacity-100 transition-opacity">
-                          <ChevronUp size={12} className={sortConfig?.key === col.key && sortConfig.direction === 'asc' ? 'text-blue-400' : ''} />
-                          <ChevronDown size={12} className={sortConfig?.key === col.key && sortConfig.direction === 'desc' ? 'text-blue-400' : ''} />
+                          <ChevronUp size={12} className={sortConfig?.key === col.key && sortConfig.direction === 'asc' ? 'text-blue-500 dark:text-blue-400' : ''} />
+                          <ChevronDown size={12} className={sortConfig?.key === col.key && sortConfig.direction === 'desc' ? 'text-blue-500 dark:text-blue-400' : ''} />
                         </div>
                       </button>
                     ))}
                     <div className="p-3 text-right">عمولة المشرف</div>
                   </div>
                   
-                  <div className="divide-y divide-slate-800/30">
+                  <div className="divide-y divide-slate-200 dark:divide-slate-800/30">
                     {filteredResults.map((row, idx) => (
-                      <div key={idx} className="grid grid-cols-[50px_1.2fr_100px_100px_100px_85px_85px_110px_1.2fr_120px] gap-0 items-center text-[13px] text-slate-300 hover:bg-slate-800/40 transition-all group border-b border-slate-800/20">
-                        <div className="p-3 text-center border-l border-slate-800/50 bg-slate-950/10 font-mono english-nums text-slate-500">{idx + 1}</div>
-                        <div className="p-3 text-right border-l border-slate-800/50 font-bold text-slate-100 truncate flex items-center gap-2">
+                      <div key={idx} className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 items-center text-[15px] text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-all group border-b border-slate-200 dark:border-slate-800/20">
+                        <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-950/10 font-mono english-nums text-slate-400 dark:text-slate-500">{idx + 1}</div>
+                        <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-bold text-slate-900 dark:text-slate-100 truncate flex items-center gap-2">
                           <span className="truncate">{row.branchName}</span>
                           {row.isNew && (
-                            <span className="px-1.5 py-0.5 bg-green-500/10 text-green-400 text-[9px] rounded-full border border-green-500/20 font-bold whitespace-nowrap">جديد</span>
+                            <span className="px-1.5 py-0.5 bg-green-500/10 text-green-600 dark:text-green-400 text-[9px] rounded-full border border-green-500/20 font-bold whitespace-nowrap">جديد</span>
                           )}
                         </div>
-                        <div className="p-3 text-right border-l border-slate-800/50 font-mono english-nums text-slate-400">{formatNumber(row.sales2024)}</div>
-                        <div className="p-3 text-right border-l border-slate-800/50 font-mono english-nums text-slate-300">{formatNumber(row.sales2025)}</div>
-                        <div className={`p-3 text-right border-l border-slate-800/50 font-mono english-nums font-bold ${row.difference >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums text-slate-500 dark:text-slate-400">{formatNumber(row.sales2024)}</div>
+                        <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums text-slate-700 dark:text-slate-300">{formatNumber(row.sales2025)}</div>
+                        <div className={`p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums font-bold ${row.difference >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                           {formatNumber(row.difference)}
                         </div>
-                        <div className="p-3 text-right border-l border-slate-800/50 font-mono text-blue-400 english-nums font-semibold">{formatNumber(row.growth, 2)}%</div>
-                        <div className="p-3 text-right border-l border-slate-800/50 font-bold text-amber-400 english-nums">{formatNumber(row.rate * 100, 1)}%</div>
-                        <div className="p-3 text-right border-l border-slate-800/50 font-bold text-slate-100 english-nums">{formatNumber(row.commission, 2)}</div>
-                        <div className="p-3 text-right border-l border-slate-800/50 text-blue-400 font-bold truncate flex items-center justify-between group/edit">
+                        <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono text-blue-600 dark:text-blue-400 english-nums font-semibold">{formatNumber(row.growth, 2)}%</div>
+                        <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-bold text-amber-600 dark:text-amber-400 english-nums">{formatNumber(row.rate * 100, 1)}%</div>
+                        <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-bold text-slate-900 dark:text-slate-100 english-nums">{formatNumber(row.commission, 2)}</div>
+                        <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 text-blue-600 dark:text-blue-400 font-bold truncate flex items-center justify-between group/edit">
                           <span className="truncate">{row.supervisorNames}</span>
                           <button 
                             onClick={(e) => {
@@ -810,10 +810,8 @@ export default function CommissionsPage() {
                             <Edit2 size={14} />
                           </button>
                         </div>
-                        <div className="p-3 text-right">
-                          <div className="font-black text-white bg-blue-600/20 py-1.5 px-3 rounded-lg border border-blue-500/30 text-right english-nums shadow-[0_0_15px_rgba(37,99,235,0.1)] group-hover:scale-105 transition-transform text-xs">
-                            {formatNumber(row.supervisorCommission10, 2)}
-                          </div>
+                        <div className="p-3 text-right font-bold text-[#800000] dark:text-rose-400 english-nums transition-colors">
+                          {formatNumber(row.supervisorCommission10, 2)}
                         </div>
                       </div>
                     ))}
@@ -831,41 +829,41 @@ export default function CommissionsPage() {
               className="space-y-6"
             >
               {!selectedArchive ? (
-                <div className="bg-slate-900/40 backdrop-blur-2xl border border-slate-800 rounded-3xl p-6 shadow-2xl">
+                <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl transition-colors duration-500">
                   <div className="flex items-center gap-3 mb-8">
-                    <div className="p-2 bg-blue-600/10 rounded-lg text-blue-400 border border-blue-500/20">
+                    <div className="p-2 bg-blue-600/5 dark:bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 border border-blue-500/20">
                       <History size={24} />
                     </div>
-                    <h3 className="text-2xl font-bold text-slate-100">سجل الأرشيف</h3>
+                    <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">سجل الأرشيف</h3>
                   </div>
 
                   <div className="grid gap-4">
                     {archives.length > 0 ? archives.map((arc) => (
                       <div 
                         key={arc.id}
-                        className="bg-slate-950/40 border border-slate-800 p-4 rounded-2xl flex items-center justify-between hover:border-blue-500/30 transition-all cursor-pointer group"
+                        className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex items-center justify-between hover:border-blue-500/30 transition-all cursor-pointer group"
                         onClick={() => viewArchiveDetails(arc.id)}
                       >
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center text-slate-500 group-hover:text-blue-400 transition-colors">
+                          <div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-xl flex items-center justify-center text-slate-400 dark:text-slate-500 group-hover:text-blue-500 transition-colors border border-slate-100 dark:border-transparent">
                             <FileSpreadsheet size={24} />
                           </div>
                           <div>
-                            <h4 className="font-bold text-slate-200">{arc.filename}</h4>
-                            <p className="text-xs text-slate-500">{new Date(arc.created_at).toLocaleString('ar-EG')}</p>
+                            <h4 className="font-bold text-slate-800 dark:text-slate-200">{arc.filename}</h4>
+                            <p className="text-xs text-slate-400 dark:text-slate-500">{new Date(arc.created_at).toLocaleString('ar-EG')}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-6">
                           <div className="text-right">
-                            <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">إجمالي العمولات</p>
-                            <p className="font-mono font-bold text-emerald-400 english-nums">{formatNumber(arc.total_commission, 2)}</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">إجمالي العمولات</p>
+                            <p className="font-mono font-bold text-emerald-600 dark:text-emerald-400 english-nums">{formatNumber(arc.total_commission, 2)}</p>
                           </div>
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDeleteArchive(arc.id);
                             }}
-                            className="p-3 hover:bg-rose-500/10 rounded-2xl text-slate-500 hover:text-rose-400 border border-transparent hover:border-rose-500/20 transition-all"
+                            className="p-3 hover:bg-rose-500/10 rounded-2xl text-slate-400 dark:text-slate-500 hover:text-rose-500 border border-transparent hover:border-rose-500/20 transition-all"
                           >
                             <Trash2 size={18} />
                           </button>
@@ -881,59 +879,59 @@ export default function CommissionsPage() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  <div className="bg-slate-900/40 backdrop-blur-2xl border border-slate-800 rounded-3xl p-6 shadow-2xl flex items-center justify-between">
+                  <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl flex items-center justify-between transition-colors duration-500">
                     <div className="flex items-center gap-4">
                       <button 
                         onClick={() => setSelectedArchive(null)}
-                        className="p-2 hover:bg-slate-800 rounded-xl text-slate-400 transition-colors"
+                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 transition-colors"
                       >
                         <X size={20} />
                       </button>
                       <div>
-                        <h3 className="text-xl font-bold text-slate-100">{selectedArchive.filename}</h3>
-                        <p className="text-xs text-slate-500">بتاريخ {new Date(selectedArchive.created_at).toLocaleString('ar-EG')}</p>
+                        <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">{selectedArchive.filename}</h3>
+                        <p className="text-xs text-slate-400 dark:text-slate-500">بتاريخ {new Date(selectedArchive.created_at).toLocaleString('ar-EG')}</p>
                       </div>
                     </div>
                     <div className="flex gap-8 text-right">
                       <div>
-                        <p className="text-[10px] text-slate-500 uppercase">إجمالي الفروع</p>
-                        <p className="font-mono font-bold text-emerald-400 english-nums">{formatNumber(selectedArchive.total_commission, 2)}</p>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">إجمالي الفروع</p>
+                        <p className="font-mono font-bold text-emerald-600 dark:text-emerald-400 english-nums">{formatNumber(selectedArchive.total_commission, 2)}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-slate-500 uppercase">إجمالي المشرفين</p>
-                        <p className="font-mono font-bold text-blue-400 english-nums">{formatNumber(selectedArchive.total_supervisors_commission, 2)}</p>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">إجمالي المشرفين</p>
+                        <p className="font-mono font-bold text-blue-600 dark:text-blue-400 english-nums">{formatNumber(selectedArchive.total_supervisors_commission, 2)}</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-slate-900/40 backdrop-blur-2xl border border-slate-800 rounded-3xl p-6 shadow-2xl overflow-hidden">
-                    <div className="overflow-x-auto custom-scrollbar">
-                      <div className="min-w-[1200px]">
-                        <div className="grid grid-cols-[50px_1.2fr_100px_100px_100px_85px_85px_110px_1.2fr_120px] gap-0 text-[11px] text-slate-500 border-b border-slate-800 font-bold uppercase tracking-wider bg-slate-950/20">
-                          <div className="p-3 text-center border-l border-slate-800">م</div>
-                          <div className="p-3 text-right border-l border-slate-800">الفرع</div>
-                          <div className="p-3 text-right border-l border-slate-800">2024</div>
-                          <div className="p-3 text-right border-l border-slate-800">2025</div>
-                          <div className="p-3 text-right border-l border-slate-800">الفارق</div>
-                          <div className="p-3 text-right border-l border-slate-800">النمو</div>
-                          <div className="p-3 text-right border-l border-slate-800">العمولة %</div>
-                          <div className="p-3 text-right border-l border-slate-800">القيمة</div>
-                          <div className="p-3 text-right border-l border-slate-800">المشرف</div>
+                  <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl overflow-hidden transition-colors duration-500">
+                    <div className="overflow-auto max-h-[calc(100vh-400px)] custom-scrollbar rounded-xl border border-slate-200 dark:border-slate-800/50">
+                      <div className="min-w-[1400px]">
+                        <div className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 text-sm text-slate-400 dark:text-slate-500 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-950 sticky top-0 z-10 transition-colors">
+                          <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800">م</div>
+                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">الفرع</div>
+                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">{yearPrev}</div>
+                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">{yearCurr}</div>
+                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">الفارق</div>
+                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">النمو</div>
+                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">العمولة %</div>
+                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">القيمة</div>
+                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">المشرف</div>
                           <div className="p-3 text-right">عمولة المشرف</div>
                         </div>
-                        <div className="divide-y divide-slate-800/30">
+                        <div className="divide-y divide-slate-200 dark:divide-slate-800/30">
                           {archiveDetails.map((item, idx) => (
-                            <div key={idx} className="grid grid-cols-[50px_1.2fr_100px_100px_100px_85px_85px_110px_1.2fr_120px] gap-0 items-center text-[11px] text-slate-300 hover:bg-slate-800/40 border-b border-slate-800/20">
-                              <div className="p-3 text-center border-l border-slate-800/50 bg-slate-950/10 font-mono english-nums text-slate-500">{idx + 1}</div>
-                              <div className="p-3 text-right border-l border-slate-800/50 font-bold text-slate-100 truncate">{item.branch_name}</div>
-                              <div className="p-3 text-right border-l border-slate-800/50 font-mono english-nums">{formatNumber(item.sales_2024)}</div>
-                              <div className="p-3 text-right border-l border-slate-800/50 font-mono english-nums">{formatNumber(item.sales_2025)}</div>
-                              <div className="p-3 text-right border-l border-slate-800/50 font-mono english-nums">{formatNumber(item.sales_2025 - item.sales_2024)}</div>
-                              <div className="p-3 text-right border-l border-slate-800/50 font-mono english-nums">{formatNumber(item.growth, 2)}%</div>
-                              <div className="p-3 text-right border-l border-slate-800/50 font-bold text-amber-400 english-nums">{formatNumber(item.rate * 100, 1)}%</div>
-                              <div className="p-3 text-right border-l border-slate-800/50 font-bold text-slate-100 english-nums">{formatNumber(item.commission, 2)}</div>
-                              <div className="p-3 text-right border-l border-slate-800/50 text-blue-400 font-bold truncate">{item.supervisor_names}</div>
-                              <div className="p-3 text-right font-bold text-white bg-blue-600/10">{formatNumber(item.supervisor_commission, 2)}</div>
+                            <div key={idx} className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 items-center text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/40 border-b border-slate-200/50 dark:border-slate-800/20 transition-colors">
+                              <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-950/10 font-mono english-nums text-slate-400 dark:text-slate-500">{idx + 1}</div>
+                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-bold text-slate-800 dark:text-slate-100 truncate">{item.branch_name}</div>
+                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums">{formatNumber(item.sales_2024)}</div>
+                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums">{formatNumber(item.sales_2025)}</div>
+                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums">{formatNumber(item.sales_2025 - item.sales_2024)}</div>
+                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums">{formatNumber(item.growth, 2)}%</div>
+                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-bold text-amber-600 dark:text-amber-400 english-nums">{formatNumber(item.rate * 100, 1)}%</div>
+                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-bold text-slate-800 dark:text-slate-100 english-nums">{formatNumber(item.commission, 2)}</div>
+                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 text-blue-600 dark:text-blue-400 font-bold truncate">{item.supervisor_names}</div>
+                              <div className="p-3 text-right font-bold text-[#800000] dark:text-rose-400 english-nums transition-colors">{formatNumber(item.supervisor_commission, 2)}</div>
                             </div>
                           ))}
                         </div>
@@ -952,10 +950,10 @@ export default function CommissionsPage() {
               animate={{ opacity: 1 }}
               className="space-y-6"
             >
-              <div className="flex justify-between items-center bg-slate-900/40 backdrop-blur-2xl border border-slate-800 p-4 rounded-2xl mb-4 shadow-xl">
+              <div className="flex justify-between items-center bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-4 rounded-2xl mb-4 shadow-xl transition-colors duration-500">
                 <div>
-                  <h3 className="text-xl font-bold mb-0.5 text-slate-100">إدارة الفروع والربط</h3>
-                  <p className="text-xs text-slate-400">إضافة الفروع وربطها بالمشرفين المخصصين</p>
+                  <h3 className="text-xl font-bold mb-0.5 text-slate-800 dark:text-slate-100">إدارة الفروع والربط</h3>
+                  <p className="text-xs text-slate-400 dark:text-slate-400">إضافة الفروع وربطها بالمشرفين المخصصين</p>
                 </div>
                 <div className="flex gap-3">
                   <button 
@@ -981,10 +979,10 @@ export default function CommissionsPage() {
                   return (
                     <motion.div 
                       key={branch.id}
-                      className="bg-slate-900/40 backdrop-blur-2xl border border-slate-800 rounded-2xl p-4 hover:border-blue-500/50 transition-all group shadow-lg"
+                      className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-2xl p-4 hover:border-blue-500/50 transition-all group shadow-lg"
                     >
                       <div className="flex justify-between items-start mb-3">
-                        <h4 className="text-base font-bold text-slate-100 truncate flex-1">{branch.name}</h4>
+                        <h4 className="text-base font-bold text-slate-800 dark:text-slate-100 truncate flex-1">{branch.name}</h4>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity mr-2">
                           <button 
                             onClick={() => {
@@ -1035,10 +1033,10 @@ export default function CommissionsPage() {
               animate={{ opacity: 1 }}
               className="space-y-6"
             >
-              <div className="flex justify-between items-center bg-slate-900/40 backdrop-blur-2xl border border-slate-800 p-4 rounded-2xl mb-4 shadow-xl">
+              <div className="flex justify-between items-center bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-4 rounded-2xl mb-4 shadow-xl transition-colors duration-500">
                 <div>
-                  <h3 className="text-xl font-bold mb-0.5 text-slate-100">إدارة المشرفين</h3>
-                  <p className="text-xs text-slate-400">إدارة قائمة المشرفين في النظام</p>
+                  <h3 className="text-xl font-bold mb-0.5 text-slate-800 dark:text-slate-100">إدارة المشرفين</h3>
+                  <p className="text-xs text-slate-400 dark:text-slate-400">إدارة قائمة المشرفين في النظام</p>
                 </div>
                 <button 
                   onClick={() => {
@@ -1057,10 +1055,10 @@ export default function CommissionsPage() {
                 {filteredSupervisors.map((calc) => (
                   <motion.div 
                     key={calc.id}
-                    className="bg-slate-900/40 backdrop-blur-2xl border border-slate-800 rounded-2xl p-4 hover:border-blue-500/50 transition-all group shadow-lg"
+                    className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-2xl p-4 hover:border-blue-500/50 transition-all group shadow-lg"
                   >
                     <div className="flex justify-between items-start mb-3">
-                      <div className="p-2 bg-blue-600/10 rounded-xl text-blue-400 border border-blue-500/20">
+                      <div className="p-2 bg-blue-600/5 dark:bg-blue-600/10 rounded-xl text-blue-600 dark:text-blue-400 border border-blue-500/20">
                         <Users size={18} />
                       </div>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1095,9 +1093,9 @@ export default function CommissionsPage() {
                     </div>
                     <p className="text-slate-500 text-[10px] mb-3">{formatNumber(calc.branchesCount)} فروع مرتبطة</p>
                     
-                    <div className="bg-blue-600/20 p-2.5 rounded-xl border border-blue-500/30">
-                      <p className="text-[9px] text-blue-400 uppercase tracking-wider mb-0.5">العمولة</p>
-                      <p className="text-lg font-mono font-bold text-blue-400 english-nums">{formatNumber(calc.supervisorCommission, 2)}</p>
+                    <div className="bg-slate-50 dark:bg-blue-600/10 p-2.5 rounded-xl border border-slate-200 dark:border-blue-500/30 transition-colors">
+                      <p className="text-[9px] text-slate-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">العمولة</p>
+                      <p className="text-lg font-mono font-bold text-[#800000] dark:text-blue-400 english-nums">{formatNumber(calc.supervisorCommission, 2)}</p>
                     </div>
                   </motion.div>
                 ))}
@@ -1106,38 +1104,38 @@ export default function CommissionsPage() {
           )}
         </AnimatePresence>
 
-      <footer className="mt-12 text-center text-slate-600 text-sm">
+      <footer className="mt-12 text-center text-slate-400 dark:text-slate-600 text-sm">
         <p>© 2025 نظام إدارة مبيعات وعمولات الفروع • Commission</p>
       </footer>
 
-      {/* Branch Modal */}
+      {/* Modals - Backgrounds and inputs */}
       <AnimatePresence>
         {isBranchModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsBranchModalOpen(false)} className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
-              <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-800/20">
-                <h3 className="text-xl font-bold text-white">{editingBranch ? 'تعديل الفرع' : 'إضافة فرع جديد'}</h3>
-                <button onClick={() => setIsBranchModalOpen(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden transition-colors duration-500">
+              <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/20">
+                <h3 className="text-xl font-bold text-slate-800 dark:text-white">{editingBranch ? 'تعديل الفرع' : 'إضافة فرع جديد'}</h3>
+                <button onClick={() => setIsBranchModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"><X size={20} /></button>
               </div>
               <div className="p-5 space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider">اسم الفرع</label>
-                  <input value={modalBranchName} onChange={(e) => setModalBranchName(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-400 mb-1 uppercase tracking-wider">اسم الفرع</label>
+                  <input value={modalBranchName} onChange={(e) => setModalBranchName(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors" />
                 </div>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">المشرفين</label>
-                    <button onClick={() => setModalBranchSupervisors([...modalBranchSupervisors, { id: '', share: 1 }])} className="text-blue-400 text-[11px] font-bold flex items-center gap-1 hover:text-blue-300 transition-colors"><Plus size={14} /> إضافة</button>
+                    <button onClick={() => setModalBranchSupervisors([...modalBranchSupervisors, { id: '', share: 1 }])} className="text-blue-600 dark:text-blue-400 text-[11px] font-bold flex items-center gap-1 hover:text-blue-500 transition-colors"><Plus size={14} /> إضافة</button>
                   </div>
                   <div className="space-y-2 max-h-[250px] overflow-y-auto custom-scrollbar pr-1">
                     {modalBranchSupervisors.map((s, idx) => (
-                      <div key={idx} className="flex gap-2 items-center bg-slate-800/30 p-2 rounded-xl border border-slate-800/50">
+                      <div key={idx} className="flex gap-2 items-center bg-slate-50 dark:bg-slate-800/30 p-2 rounded-xl border border-slate-200 dark:border-slate-800/50">
                         <select value={s.id} onChange={(e) => {
                           const newSups = [...modalBranchSupervisors];
                           newSups[idx].id = e.target.value;
                           setModalBranchSupervisors(newSups);
-                        }} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white outline-none">
+                        }} className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-white outline-none">
                           <option value="">اختر مشرف...</option>
                           {dbSupervisors.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
                         </select>
@@ -1146,7 +1144,7 @@ export default function CommissionsPage() {
                             const newSups = [...modalBranchSupervisors];
                             newSups[idx].share = parseFloat(e.target.value) || 0;
                             setModalBranchSupervisors(newSups);
-                          }} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono outline-none pr-6" />
+                          }} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-white font-mono outline-none pr-6" />
                         </div>
                         <button onClick={() => setModalBranchSupervisors(modalBranchSupervisors.filter((_, i) => i !== idx))} className="text-rose-500 p-1 hover:bg-rose-500/10 rounded-lg transition-colors"><Trash2 size={16} /></button>
                       </div>
@@ -1154,9 +1152,9 @@ export default function CommissionsPage() {
                   </div>
                 </div>
               </div>
-              <div className="p-5 bg-slate-800/20 border-t border-slate-800 flex gap-3">
+              <div className="p-5 bg-slate-50 dark:bg-slate-800/20 border-t border-slate-200 dark:border-slate-800 flex gap-3">
                 <button onClick={handleSaveBranch} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-blue-900/20">حفظ</button>
-                <button onClick={() => setIsBranchModalOpen(false)} className="px-6 py-2.5 border border-slate-700 text-slate-300 rounded-xl text-sm hover:bg-slate-800 transition-all">إلغاء</button>
+                <button onClick={() => setIsBranchModalOpen(false)} className="px-6 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300 rounded-xl text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">إلغاء</button>
               </div>
             </motion.div>
           </div>
@@ -1168,20 +1166,20 @@ export default function CommissionsPage() {
         {isSupervisorModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsSupervisorModalOpen(false)} className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden">
-              <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-800/20">
-                <h3 className="text-xl font-bold text-white">{editingSupervisor ? 'تعديل مشرف' : 'إضافة مشرف جديد'}</h3>
-                <button onClick={() => setIsSupervisorModalOpen(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden transition-colors duration-500">
+              <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/20">
+                <h3 className="text-xl font-bold text-slate-800 dark:text-white">{editingSupervisor ? 'تعديل مشرف' : 'إضافة مشرف جديد'}</h3>
+                <button onClick={() => setIsSupervisorModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white"><X size={20} /></button>
               </div>
               <div className="p-5 space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider">اسم المشرف</label>
-                  <input value={modalSupervisorName} onChange={(e) => setModalSupervisorName(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-400 mb-1 uppercase tracking-wider">اسم المشرف</label>
+                  <input value={modalSupervisorName} onChange={(e) => setModalSupervisorName(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
               </div>
-              <div className="p-5 bg-slate-800/20 border-t border-slate-800 flex gap-3">
-                <button onClick={handleSaveSupervisor} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-blue-900/20">حفظ</button>
-                <button onClick={() => setIsSupervisorModalOpen(false)} className="px-6 py-2.5 border border-slate-700 text-slate-300 rounded-xl text-sm hover:bg-slate-800 transition-all">إلغاء</button>
+              <div className="p-5 bg-slate-50 dark:bg-slate-800/20 border-t border-slate-200 dark:border-slate-800 flex gap-3">
+                <button onClick={handleSaveSupervisor} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-blue-900/40">حفظ</button>
+                <button onClick={() => setIsSupervisorModalOpen(false)} className="px-6 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300 rounded-xl text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">إلغاء</button>
               </div>
             </motion.div>
           </div>
@@ -1193,32 +1191,32 @@ export default function CommissionsPage() {
         {isResultEditModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsResultEditModalOpen(false)} className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-8">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-8 transition-colors duration-500">
               <div className="mb-6 flex justify-between items-center">
                 <div>
-                  <h3 className="text-2xl font-bold text-white">تعديل المبيعات</h3>
-                  <p className="text-blue-400 font-bold">{editingResult?.branchName}</p>
+                  <h3 className="text-2xl font-bold text-slate-800 dark:text-white">تعديل المبيعات</h3>
+                  <p className="text-blue-600 dark:text-blue-400 font-bold">{editingResult?.branchName}</p>
                 </div>
-                <button onClick={() => setIsResultEditModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-xl text-slate-400"><X size={24} /></button>
+                <button onClick={() => setIsResultEditModalOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 transition-colors"><X size={24} /></button>
               </div>
               
                 <div className="space-y-6">
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">مبيعات {yearPrev}</label>
+                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-widest">مبيعات {yearPrev}</label>
                     <input 
                       type="number" 
                       value={editSales2024} 
                       onChange={(e) => setEditSales2024(Number(e.target.value))} 
-                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-blue-500 outline-none text-lg font-mono english-nums" 
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-4 text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none text-lg font-mono english-nums transition-colors" 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">مبيعات {yearCurr}</label>
+                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-widest">مبيعات {yearCurr}</label>
                     <input 
                       type="number" 
                       value={editSales2025} 
                       onChange={(e) => setEditSales2025(Number(e.target.value))} 
-                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-blue-500 outline-none text-lg font-mono english-nums" 
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-4 text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none text-lg font-mono english-nums transition-colors" 
                     />
                   </div>
                 </div>
@@ -1233,7 +1231,7 @@ export default function CommissionsPage() {
                 </button>
                 <button 
                   onClick={() => setIsResultEditModalOpen(false)}
-                  className="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl transition-all"
+                  className="px-8 py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold rounded-2xl transition-all"
                 >
                   إلغاء
                 </button>
