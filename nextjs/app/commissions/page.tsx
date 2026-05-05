@@ -47,6 +47,19 @@ const normalizeArabic = (text: string) => {
     .trim();
 };
 
+const SUPERVISOR_COLORS = [
+  { bg: 'bg-blue-500/10', text: 'text-blue-600 dark:text-blue-400', border: 'border-blue-500/20', accent: 'bg-blue-600', hover: 'hover:border-blue-500/50' },
+  { bg: 'bg-emerald-500/10', text: 'text-emerald-600 dark:text-emerald-400', border: 'border-emerald-500/20', accent: 'bg-emerald-600', hover: 'hover:border-emerald-500/50' },
+  { bg: 'bg-amber-500/10', text: 'text-amber-600 dark:text-amber-400', border: 'border-amber-500/20', accent: 'bg-amber-600', hover: 'hover:border-amber-500/50' },
+  { bg: 'bg-purple-500/10', text: 'text-purple-600 dark:text-purple-400', border: 'border-purple-500/20', accent: 'bg-purple-600', hover: 'hover:border-purple-500/50' },
+  { bg: 'bg-rose-500/10', text: 'text-rose-600 dark:text-rose-400', border: 'border-rose-500/20', accent: 'bg-rose-600', hover: 'hover:border-rose-500/50' },
+  { bg: 'bg-indigo-500/10', text: 'text-indigo-600 dark:text-indigo-400', border: 'border-indigo-500/20', accent: 'bg-indigo-600', hover: 'hover:border-indigo-500/50' },
+  { bg: 'bg-teal-500/10', text: 'text-teal-600 dark:text-teal-400', border: 'border-teal-500/20', accent: 'bg-teal-600', hover: 'hover:border-teal-500/50' },
+  { bg: 'bg-orange-500/10', text: 'text-orange-600 dark:text-orange-400', border: 'border-orange-500/20', accent: 'bg-orange-600', hover: 'hover:border-orange-500/50' },
+  { bg: 'bg-cyan-500/10', text: 'text-cyan-600 dark:text-cyan-400', border: 'border-cyan-500/20', accent: 'bg-cyan-600', hover: 'hover:border-cyan-500/50' },
+  { bg: 'bg-pink-500/10', text: 'text-pink-600 dark:text-pink-400', border: 'border-pink-500/20', accent: 'bg-pink-600', hover: 'hover:border-pink-500/50' },
+];
+
 interface ExcelRow {
   [key: string]: any;
 }
@@ -103,6 +116,14 @@ export default function CommissionsPage() {
   // Dynamic Years State
   const [yearPrev, setYearPrev] = useState(2024);
   const [yearCurr, setYearCurr] = useState(2025);
+
+  const supervisorColorMap = useMemo(() => {
+    const map: Record<string, typeof SUPERVISOR_COLORS[0]> = {};
+    dbSupervisors.forEach((sup, index) => {
+      map[sup.id] = SUPERVISOR_COLORS[index % SUPERVISOR_COLORS.length];
+    });
+    return map;
+  }, [dbSupervisors]);
 
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
 
@@ -474,7 +495,8 @@ export default function CommissionsPage() {
         ...row,
         supervisorNames,
         supervisorCommission10: row.commission * 0.10,
-        assignments
+        assignments,
+        primarySupervisorId: assignments.length > 0 ? assignments[0].supervisor_id : null
       };
     });
   }, [calculatedData, dbBranches, dbSupervisors, dbAssignments]);
@@ -547,8 +569,24 @@ export default function CommissionsPage() {
   }, [enrichedResults, searchTerm, sortConfig]);
 
   const filteredBranches = useMemo(() => {
-    return dbBranches.filter(b => b.name.toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [dbBranches, searchTerm]);
+    const filtered = dbBranches.filter(b => b.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    return filtered.sort((a, b) => {
+      const aAssignments = dbAssignments.filter(as => as.branch_id === a.id);
+      const bAssignments = dbAssignments.filter(as => as.branch_id === b.id);
+      
+      const aSupId = aAssignments.length > 0 ? aAssignments[0].supervisor_id : null;
+      const bSupId = bAssignments.length > 0 ? bAssignments[0].supervisor_id : null;
+      
+      const aSupName = aSupId ? dbSupervisors.find(s => s.id === aSupId)?.name || 'zzz' : 'zzz';
+      const bSupName = bSupId ? dbSupervisors.find(s => s.id === bSupId)?.name || 'zzz' : 'zzz';
+      
+      if (aSupName === bSupName) {
+        return a.name.localeCompare(b.name, 'ar');
+      }
+      return aSupName.localeCompare(bSupName, 'ar');
+    });
+  }, [dbBranches, dbAssignments, dbSupervisors, searchTerm]);
 
   const filteredSupervisors = useMemo(() => {
     return supervisorCalculations.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -830,7 +868,7 @@ export default function CommissionsPage() {
                         <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono text-blue-600 dark:text-blue-400 english-nums font-semibold">{formatNumber(row.growth, 2)}%</div>
                         <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-bold text-amber-600 dark:text-amber-400 english-nums">{formatNumber(row.rate * 100, 1)}%</div>
                         <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-bold text-slate-900 dark:text-slate-100 english-nums">{formatNumber(row.commission, 2)}</div>
-                        <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 text-blue-600 dark:text-blue-400 font-bold truncate flex items-center justify-between group/edit">
+                        <div className={`p-3 text-right border-l border-slate-200 dark:border-slate-800/50 ${row.primarySupervisorId ? supervisorColorMap[row.primarySupervisorId]?.text : 'text-blue-600 dark:text-blue-400'} font-bold truncate flex items-center justify-between group/edit`}>
                           <span className="truncate">{row.supervisorNames}</span>
                           <button 
                             onClick={(e) => {
@@ -1013,14 +1051,21 @@ export default function CommissionsPage() {
                 {filteredBranches.map((branch) => {
                   const assignments = dbAssignments.filter(a => a.branch_id === branch.id);
                   const assignedSups = assignments.map(a => dbSupervisors.find(s => s.id === a.supervisor_id));
+                  const primarySupId = assignments.length > 0 ? assignments[0].supervisor_id : null;
+                  const supColor = primarySupId ? supervisorColorMap[primarySupId] : null;
                   
                   return (
                     <motion.div 
                       key={branch.id}
-                      className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-2xl p-4 hover:border-blue-500/50 transition-all group shadow-lg"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`bg-white dark:bg-slate-900/40 backdrop-blur-2xl border ${supColor ? supColor.border : 'border-slate-200 dark:border-slate-800'} rounded-2xl p-4 ${supColor ? supColor.hover : 'hover:border-blue-500/50'} transition-all group shadow-lg relative overflow-hidden`}
                     >
+                      {supColor && (
+                        <div className={`absolute top-0 right-0 w-1.5 h-full ${supColor.accent} opacity-50`} />
+                      )}
                       <div className="flex justify-between items-start mb-3">
-                        <h4 className="text-base font-bold text-slate-800 dark:text-slate-100 truncate flex-1">{branch.name}</h4>
+                        <h4 className={`text-base font-bold ${supColor ? supColor.text : 'text-slate-800 dark:text-slate-100'} truncate flex-1`}>{branch.name}</h4>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity mr-2">
                           <button 
                             onClick={() => {
@@ -1049,12 +1094,15 @@ export default function CommissionsPage() {
                       </div>
                       
                       <div className="space-y-1.5">
-                        {assignedSups.length > 0 ? assignedSups.map((sup, idx) => (
-                          <div key={idx} className="flex justify-between text-[11px] bg-slate-800/30 p-1.5 rounded-lg border border-slate-700/30">
-                            <span className="text-slate-400 truncate max-w-[100px]">{sup?.name || 'مجهول'}</span>
-                            <span className="text-blue-400 font-bold english-nums">{formatNumber(assignments[idx].share * 100, 1)}%</span>
-                          </div>
-                        )) : (
+                        {assignedSups.length > 0 ? assignedSups.map((sup, idx) => {
+                          const sColor = sup ? supervisorColorMap[sup.id] : null;
+                          return (
+                            <div key={idx} className={`flex justify-between text-[11px] ${sColor ? sColor.bg : 'bg-slate-800/30'} p-1.5 rounded-lg border ${sColor ? sColor.border : 'border-slate-700/30'} transition-colors`}>
+                              <span className={`truncate max-w-[100px] font-bold ${sColor ? sColor.text : 'text-slate-400'}`}>{sup?.name || 'مجهول'}</span>
+                              <span className={`${sColor ? sColor.text : 'text-blue-400'} font-bold english-nums`}>{formatNumber(assignments[idx].share * 100, 1)}%</span>
+                            </div>
+                          );
+                        }) : (
                           <p className="text-slate-500 text-[10px] italic">لا يوجد مشرف</p>
                         )}
                       </div>
@@ -1092,15 +1140,22 @@ export default function CommissionsPage() {
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {filteredSupervisors.map((calc) => (
-                  <motion.div 
-                    key={calc.id}
-                    className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-2xl p-4 hover:border-blue-500/50 transition-all group shadow-lg"
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="p-2 bg-blue-600/5 dark:bg-blue-600/10 rounded-xl text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                        <Users size={18} />
-                      </div>
+                {filteredSupervisors.map((calc) => {
+                  const supColor = supervisorColorMap[calc.id];
+                  return (
+                    <motion.div 
+                      key={calc.id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className={`bg-white dark:bg-slate-900/40 backdrop-blur-2xl border ${supColor ? supColor.border : 'border-slate-200 dark:border-slate-800'} rounded-2xl p-4 ${supColor ? supColor.hover : 'hover:border-blue-500/50'} transition-all group shadow-lg relative overflow-hidden`}
+                    >
+                      {supColor && (
+                        <div className={`absolute top-0 right-0 w-1.5 h-full ${supColor.accent} opacity-50`} />
+                      )}
+                      <div className="flex justify-between items-start mb-3">
+                        <div className={`p-2 ${supColor ? supColor.bg : 'bg-blue-600/5 dark:bg-blue-600/10'} rounded-xl ${supColor ? supColor.text : 'text-blue-600 dark:text-blue-400'} border ${supColor ? supColor.border : 'border-blue-500/20'}`}>
+                          <Users size={18} />
+                        </div>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={() => {
@@ -1126,19 +1181,20 @@ export default function CommissionsPage() {
                       </div>
                     </div>
                     <div className="flex justify-between items-center mb-0.5">
-                      <h4 className="text-base font-bold text-slate-100 truncate flex-1">{calc.name}</h4>
-                      <span className="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/20 font-bold english-nums">
+                      <h4 className={`text-base font-bold ${supColor ? supColor.text : 'text-slate-100'} truncate flex-1`}>{calc.name}</h4>
+                      <span className={`text-[10px] ${supColor ? supColor.bg : 'bg-blue-600/20'} ${supColor ? supColor.text : 'text-blue-400'} px-2 py-0.5 rounded-full border ${supColor ? supColor.border : 'border-blue-500/20'} font-bold english-nums`}>
                         {formatNumber(calc.share * 10, 1)}%
                       </span>
                     </div>
                     <p className="text-slate-500 text-[10px] mb-3">{formatNumber(calc.branchesCount)} فروع مرتبطة</p>
                     
-                    <div className="bg-slate-50 dark:bg-blue-600/10 p-2.5 rounded-xl border border-slate-200 dark:border-blue-500/30 transition-colors">
-                      <p className="text-[9px] text-slate-500 dark:text-blue-400 uppercase tracking-wider mb-0.5">العمولة</p>
-                      <p className="text-lg font-mono font-bold text-[#800000] dark:text-blue-400 english-nums">{formatNumber(calc.supervisorCommission, 2)}</p>
+                    <div className={`${supColor ? supColor.bg : 'bg-slate-50 dark:bg-blue-600/10'} p-2.5 rounded-xl border ${supColor ? supColor.border : 'border-slate-200 dark:border-blue-500/30'} transition-colors`}>
+                      <p className={`text-[9px] ${supColor ? supColor.text : 'text-slate-500 dark:text-blue-400'} uppercase tracking-wider mb-0.5`}>العمولة</p>
+                      <p className={`text-lg font-mono font-bold ${supColor ? supColor.text : 'text-[#800000] dark:text-blue-400'} english-nums`}>{formatNumber(calc.supervisorCommission, 2)}</p>
                     </div>
                   </motion.div>
-                ))}
+                );
+              })}
               </div>
             </motion.div>
           )}
