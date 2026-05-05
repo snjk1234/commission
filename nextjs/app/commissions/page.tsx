@@ -153,6 +153,7 @@ export default function CommissionsPage() {
       
       setSelectedArchive(archive);
       setArchiveDetails(items || []);
+      setSearchTerm(''); // Clear search when viewing archive details
     } catch (err) {
       console.error(err);
     } finally {
@@ -564,7 +565,7 @@ export default function CommissionsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 w-full mx-auto px-6 md:px-10 pb-12 transition-all duration-500" dir="rtl">
-      <header className="py-10 flex justify-between items-center border-b border-slate-200 dark:border-slate-800/50 mb-8 transition-colors duration-500">
+      <header className="py-10 flex justify-between items-start border-b border-slate-200 dark:border-slate-800/50 mb-8 transition-colors duration-500">
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -574,6 +575,26 @@ export default function CommissionsPage() {
             إدارة العمولات
           </h1>
           <p className="text-slate-600 dark:text-slate-500 text-sm font-medium">نظام تحليل المبيعات واحتساب عمولات الفروع والمشرفين بدقة متناهية</p>
+          
+          {/* Moved Search Box */}
+          <div className="mt-6 w-full max-w-md relative group">
+            <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition-colors" size={20} />
+            <input 
+              type="text" 
+              placeholder="ابحث عن فرع أو مشرف..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl pr-12 pl-12 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
+            />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')}
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            )}
+          </div>
         </motion.div>
         
         <div className="flex items-center gap-4">
@@ -590,17 +611,6 @@ export default function CommissionsPage() {
           <div className="sticky top-6 flex flex-col gap-4 overflow-hidden">
             {/* Sidebar content starting with search */}
 
-          {/* Search Box */}
-          <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 rounded-3xl shadow-xl relative group overflow-hidden transition-colors duration-500">
-            <Search className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition-colors" size={20} />
-            <input 
-              type="text" 
-              placeholder="ابحث..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-950/40 border border-transparent rounded-2xl pr-12 pl-10 py-3 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-blue-500/30 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 lg:opacity-0 group-hover/sidebar:opacity-100"
-            />
-          </div>
 
           {/* Navigation Tabs */}
           <nav className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 rounded-3xl shadow-xl flex flex-col gap-1 transition-colors duration-500">
@@ -829,6 +839,7 @@ export default function CommissionsPage() {
                               setEditSales2024(row.sales2024);
                               setEditSales2025(row.sales2025);
                               setIsResultEditModalOpen(true);
+                              setSearchTerm('');
                             }}
                             className="p-1.5 hover:bg-blue-600/20 rounded-lg text-blue-400 opacity-0 group-hover/edit:opacity-100 transition-all ml-1"
                             title="تعديل المبيعات"
@@ -988,6 +999,7 @@ export default function CommissionsPage() {
                       setModalBranchName('');
                       setModalBranchSupervisors([]);
                       setIsBranchModalOpen(true);
+                      setSearchTerm('');
                     }}
                     className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-blue-900/40 text-sm font-bold"
                   >
@@ -1016,6 +1028,7 @@ export default function CommissionsPage() {
                               setModalBranchName(branch.name);
                               setModalBranchSupervisors(assignments.map(a => ({ id: a.supervisor_id, share: a.share })));
                               setIsBranchModalOpen(true);
+                              setSearchTerm('');
                             }}
                             className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-100 transition-colors"
                           >
@@ -1069,6 +1082,7 @@ export default function CommissionsPage() {
                     setEditingSupervisor(null);
                     setModalSupervisorName('');
                     setIsSupervisorModalOpen(true);
+                    setSearchTerm('');
                   }}
                   className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-blue-900/40 text-sm font-bold"
                 >
