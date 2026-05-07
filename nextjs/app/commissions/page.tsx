@@ -74,6 +74,9 @@ interface CalculatedData {
   rate: number;
   commission: number;
   isNew: boolean;
+  splitSalesP1?: number; // Manual entry for first 17 days
+  isSplit?: boolean;
+  openingDay?: number;
 }
 
 export default function CommissionsPage() {
@@ -93,8 +96,10 @@ export default function CommissionsPage() {
 
   // Modals
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
-  const [editingBranch, setEditingBranch] = useState<{id: string, name: string} | null>(null);
+  const [editingBranch, setEditingBranch] = useState<{id: string, name: string, opening_day?: number, opening_month?: number} | null>(null);
   const [modalBranchName, setModalBranchName] = useState('');
+  const [modalBranchOpeningDay, setModalBranchOpeningDay] = useState<number | ''>('');
+  const [modalBranchOpeningMonth, setModalBranchOpeningMonth] = useState<number | ''>('');
   const [modalBranchSupervisors, setModalBranchSupervisors] = useState<{id: string, share: number}[]>([]);
 
   const [isSupervisorModalOpen, setIsSupervisorModalOpen] = useState(false);
@@ -112,10 +117,12 @@ export default function CommissionsPage() {
   const [isResultEditModalOpen, setIsResultEditModalOpen] = useState(false);
   const [editSales2024, setEditSales2024] = useState(0);
   const [editSales2025, setEditSales2025] = useState(0);
+  const [editSplitSalesP1, setEditSplitSalesP1] = useState(0);
 
-  // Dynamic Years State
+  // Dynamic Years & Month State
   const [yearPrev, setYearPrev] = useState(2024);
   const [yearCurr, setYearCurr] = useState(2025);
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
 
   const supervisorColorMap = useMemo(() => {
     const map: Record<string, typeof SUPERVISOR_COLORS[0]> = {};
@@ -200,11 +207,65 @@ export default function CommissionsPage() {
     if (!editingResult) return;
     try {
       setIsLoading(true);
+      
+      // Update local state for immediate feedback
+      setCalculatedData(prev => prev.map(item => {
+        if (item.branchName === editingResult.branchName) {
+          const newSales25 = editSales2025;
+          const newSales24 = editSales2024;
+          const isSplit = item.isSplit;
+          
+          let commission = 0;
+          let rate = 0;
+          let difference = 0;
+          let growth = 0;
+
+          if (isSplit) {
+            const salesP1 = editSplitSalesP1;
+            const salesP2 = newSales25 - salesP1;
+            const rateP1 = calculateCommissionRate(0, true, item.branchName);
+            const commissionP1 = salesP1 * rateP1;
+            
+            const growthP2 = newSales24 !== 0 ? ((salesP2 / newSales24) - 1) * 100 : 0;
+            const rateP2 = salesP2 - newSales24 < 0 ? 0 : calculateCommissionRate(growthP2, false, item.branchName);
+            const commissionP2 = salesP2 * rateP2;
+            
+            commission = commissionP1 + commissionP2;
+            rate = newSales25 !== 0 ? commission / newSales25 : 0;
+            difference = newSales25 - newSales24;
+            growth = growthP2; // Using growth of the compared period
+          } else if (item.isNew) {
+            difference = newSales25;
+            growth = 100;
+            rate = calculateCommissionRate(0, true, item.branchName);
+            commission = newSales25 * rate;
+          } else {
+            difference = newSales25 - newSales24;
+            growth = newSales24 !== 0 ? ((newSales25 / newSales24) - 1) * 100 : 0;
+            rate = difference < 0 ? 0 : calculateCommissionRate(growth, false, item.branchName);
+            commission = newSales25 * rate;
+          }
+
+          return {
+            ...item,
+            sales2024: newSales24,
+            sales2025: newSales25,
+            splitSalesP1: editSplitSalesP1,
+            difference,
+            growth: parseFloat(growth.toFixed(2)),
+            rate,
+            commission
+          };
+        }
+        return item;
+      }));
+
+      // In a real app, you'd also save editSplitSalesP1 to a dedicated table or JSON field
       await supabase.from('commission_data')
         .upsert({ branch_name: editingResult.branchName, year: yearPrev, sales: editSales2024 }, { onConflict: 'branch_name,year' });
       await supabase.from('commission_data')
         .upsert({ branch_name: editingResult.branchName, year: yearCurr, sales: editSales2025 }, { onConflict: 'branch_name,year' });
-      await fetchData();
+      
       setIsResultEditModalOpen(false);
       setEditingResult(null);
       alert('تم تحديث البيانات بنجاح');
@@ -234,7 +295,8 @@ export default function CommissionsPage() {
         'نسبة العمولة %': formatNumber(row.rate * 100, 1),
         'قيمة العمولة': row.commission,
         'المشرف': row.supervisorNames,
-        'عمولة المشرف (10%)': row.supervisorCommission10
+        'عمولة المشرف (10%)': row.supervisorCommission10,
+        'ملاحظات': row.isSplit ? `تم التقسيم (مبيعات الفترة الأولى: ${row.splitSalesP1})` : ''
       }));
 
       const worksheet = XLSX.utils.json_to_sheet(excelData);
@@ -387,26 +449,37 @@ export default function CommissionsPage() {
       const sales25 = item25.sales;
       const sales24 = data24Map.get(item25.normalizedName);
       
+      const branchInfo = dbBranches.find(b => normalizeArabic(b.name) === item25.normalizedName);
+      const isSplit = branchInfo?.opening_day && branchInfo?.opening_month === selectedMonth;
+      
       // A branch is considered new if it didn't exist in 2024 OR if its sales were 0
-      const isNew = sales24 === undefined || sales24 === 0;
+      const isNew = (sales24 === undefined || sales24 === 0) && !isSplit;
       
       let difference = 0;
       let growth = 0;
       let rate = 0;
+      let commission = 0;
 
-      if (isNew) {
+      if (isSplit) {
+        // For split branches, we wait for manual entry of splitSalesP1. 
+        // Initially we set it to 0 or a proportional default if desired.
+        // Let's set it to 0 initially and let the user edit it.
+        difference = sales25 - (sales24 || 0);
+        growth = (sales24 && sales24 !== 0) ? ((sales25 / sales24) - 1) * 100 : 0;
+        rate = 0; // Will be recalculated after manual entry
+        commission = 0;
+      } else if (isNew) {
         difference = sales25;
-        growth = 100; // Arbitrary for new branches
+        growth = 100;
         rate = calculateCommissionRate(0, true, item25.branchName);
+        commission = sales25 * rate;
       } else {
         difference = sales25 - sales24!;
         growth = sales24 !== 0 ? ((sales25 / sales24!) - 1) * 100 : 0;
         growth = parseFloat(growth.toFixed(2));
-        // If difference is negative, rate is always 0%
         rate = difference < 0 ? 0 : calculateCommissionRate(growth, false, item25.branchName);
+        commission = sales25 * rate;
       }
-
-      const commission = sales25 * rate;
 
       return {
         id: index + 1,
@@ -417,7 +490,10 @@ export default function CommissionsPage() {
         growth,
         rate,
         commission,
-        isNew
+        isNew,
+        isSplit,
+        openingDay: branchInfo?.opening_day,
+        splitSalesP1: 0
       };
     });
 
@@ -431,12 +507,16 @@ export default function CommissionsPage() {
       if (branchId) {
         await supabase.from('commission_branches').update({ 
           name: modalBranchName, 
-          normalized_name: normalizeArabic(modalBranchName) 
+          normalized_name: normalizeArabic(modalBranchName),
+          opening_day: modalBranchOpeningDay === '' ? null : modalBranchOpeningDay,
+          opening_month: modalBranchOpeningMonth === '' ? null : modalBranchOpeningMonth
         }).eq('id', branchId);
       } else {
         const { data, error } = await supabase.from('commission_branches').insert({ 
           name: modalBranchName, 
-          normalized_name: normalizeArabic(modalBranchName) 
+          normalized_name: normalizeArabic(modalBranchName),
+          opening_day: modalBranchOpeningDay === '' ? null : modalBranchOpeningDay,
+          opening_month: modalBranchOpeningMonth === '' ? null : modalBranchOpeningMonth
         }).select().single();
         if (error) throw error;
         branchId = data.id;
@@ -512,11 +592,11 @@ export default function CommissionsPage() {
       assignments.forEach(assign => {
         const branchObj = dbBranches.find(b => b.id === assign.branch_id);
         if (branchObj) {
+          branchesCount++;
           const calcRow = calculatedData.find(r => normalizeArabic(r.branchName) === normalizeArabic(branchObj.name));
           if (calcRow) {
             totalGroupCommission += calcRow.commission;
             supervisorCommission += calcRow.commission * 0.10 * assign.share;
-            branchesCount++;
           }
         }
       });
@@ -705,6 +785,22 @@ export default function CommissionsPage() {
                   يجب أن يكون اسم الفرع في العمود الثاني والمبيعات في العمود الثالث.
                 </p>
                 
+                <div className="mb-8">
+                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-widest text-right">اختر الشهر الحالي للتقرير</label>
+                  <select 
+                    value={selectedMonth} 
+                    onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-5 py-3 text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold"
+                  >
+                    {[
+                      'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 
+                      'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+                    ].map((m, i) => (
+                      <option key={i+1} value={i+1}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <label className="relative group cursor-pointer block">
                   <div className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-8 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl shadow-blue-900/30">
                     {isLoading ? 'جاري المعالجة...' : 'اختيار ملف الإكسل'}
@@ -859,6 +955,9 @@ export default function CommissionsPage() {
                           {row.isNew && (
                             <span className="px-1.5 py-0.5 bg-green-500/10 text-green-600 dark:text-green-400 text-[9px] rounded-full border border-green-500/20 font-bold whitespace-nowrap">جديد</span>
                           )}
+                          {row.isSplit && (
+                            <span className="px-1.5 py-0.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 text-[9px] rounded-full border border-orange-500/20 font-bold whitespace-nowrap">افتتاح جزئي</span>
+                          )}
                         </div>
                         <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums text-slate-500 dark:text-slate-400">{formatNumber(row.sales2024)}</div>
                         <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums text-slate-700 dark:text-slate-300">{formatNumber(row.sales2025)}</div>
@@ -876,6 +975,7 @@ export default function CommissionsPage() {
                               setEditingResult(row);
                               setEditSales2024(row.sales2024);
                               setEditSales2025(row.sales2025);
+                              setEditSplitSalesP1(row.splitSalesP1 || 0);
                               setIsResultEditModalOpen(true);
                               setSearchTerm('');
                             }}
@@ -1071,6 +1171,8 @@ export default function CommissionsPage() {
                             onClick={() => {
                               setEditingBranch(branch);
                               setModalBranchName(branch.name);
+                              setModalBranchOpeningDay(branch.opening_day || '');
+                              setModalBranchOpeningMonth(branch.opening_month || '');
                               setModalBranchSupervisors(assignments.map(a => ({ id: a.supervisor_id, share: a.share })));
                               setIsBranchModalOpen(true);
                               setSearchTerm('');
@@ -1180,13 +1282,18 @@ export default function CommissionsPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="flex justify-between items-center mb-0.5">
-                      <h4 className={`text-base font-bold ${supColor ? supColor.text : 'text-slate-100'} truncate flex-1`}>{calc.name}</h4>
+                    <div className="flex justify-between items-center mb-3">
+                      <div className="flex items-center gap-2 flex-1 truncate">
+                        <h4 className={`text-base font-bold ${supColor ? supColor.text : 'text-slate-100'} truncate`}>{calc.name}</h4>
+                        <span className={`px-1.5 py-0.5 rounded-lg ${supColor ? supColor.bg : 'bg-slate-800/50'} ${supColor ? supColor.text : 'text-slate-400'} text-[9px] font-bold border ${supColor ? supColor.border : 'border-slate-700/30'} flex items-center gap-1 shadow-sm`}>
+                          <FileSpreadsheet size={10} />
+                          {formatNumber(calc.branchesCount)}
+                        </span>
+                      </div>
                       <span className={`text-[10px] ${supColor ? supColor.bg : 'bg-blue-600/20'} ${supColor ? supColor.text : 'text-blue-400'} px-2 py-0.5 rounded-full border ${supColor ? supColor.border : 'border-blue-500/20'} font-bold english-nums`}>
                         {formatNumber(calc.share * 10, 1)}%
                       </span>
                     </div>
-                    <p className="text-slate-500 text-[10px] mb-3">{formatNumber(calc.branchesCount)} فروع مرتبطة</p>
                     
                     <div className={`${supColor ? supColor.bg : 'bg-slate-50 dark:bg-blue-600/10'} p-2.5 rounded-xl border ${supColor ? supColor.border : 'border-slate-200 dark:border-blue-500/30'} transition-colors`}>
                       <p className={`text-[9px] ${supColor ? supColor.text : 'text-slate-500 dark:text-blue-400'} uppercase tracking-wider mb-0.5`}>العمولة</p>
@@ -1219,6 +1326,21 @@ export default function CommissionsPage() {
                   <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-400 mb-1 uppercase tracking-wider">اسم الفرع</label>
                   <input value={modalBranchName} onChange={(e) => setModalBranchName(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors" />
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-400 mb-1 uppercase tracking-wider">يوم الافتتاح (1-31)</label>
+                    <input type="number" min="1" max="31" value={modalBranchOpeningDay} onChange={(e) => setModalBranchOpeningDay(e.target.value ? Number(e.target.value) : '')} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-400 mb-1 uppercase tracking-wider">شهر الافتتاح</label>
+                    <select value={modalBranchOpeningMonth} onChange={(e) => setModalBranchOpeningMonth(e.target.value ? Number(e.target.value) : '')} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors">
+                      <option value="">اختر الشهر...</option>
+                      {['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'].map((m, i) => (
+                        <option key={i+1} value={i+1}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">المشرفين</label>
@@ -1249,7 +1371,14 @@ export default function CommissionsPage() {
                 </div>
               </div>
               <div className="p-5 bg-slate-50 dark:bg-slate-800/20 border-t border-slate-200 dark:border-slate-800 flex gap-3">
-                <button onClick={handleSaveBranch} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-blue-900/20">حفظ</button>
+                <button onClick={() => {
+                  setModalBranchName('');
+                  setModalBranchOpeningDay('');
+                  setModalBranchOpeningMonth('');
+                  setModalBranchSupervisors([]);
+                  setEditingBranch(null);
+                  handleSaveBranch();
+                }} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-blue-900/20">حفظ</button>
                 <button onClick={() => setIsBranchModalOpen(false)} className="px-6 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300 rounded-xl text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">إلغاء</button>
               </div>
             </motion.div>
@@ -1315,6 +1444,26 @@ export default function CommissionsPage() {
                       className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-4 text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none text-lg font-mono english-nums transition-colors" 
                     />
                   </div>
+
+                  {editingResult?.isSplit && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="p-5 bg-orange-500/5 border border-orange-500/20 rounded-3xl"
+                    >
+                      <label className="block text-xs font-bold text-orange-600 dark:text-orange-400 mb-3 uppercase tracking-widest">مبيعات الـ {editingResult.openingDay} يوماً الأولى (افتتاح جزئي)</label>
+                      <input 
+                        type="number" 
+                        value={editSplitSalesP1} 
+                        onChange={(e) => setEditSplitSalesP1(Number(e.target.value))} 
+                        placeholder="أدخل المبلغ هنا..."
+                        className="w-full bg-white dark:bg-slate-900 border border-orange-500/30 rounded-2xl px-5 py-4 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500 outline-none text-lg font-mono english-nums transition-colors shadow-inner" 
+                      />
+                      <p className="mt-3 text-[11px] text-orange-600/70 leading-relaxed font-medium">
+                        * سيقوم النظام باحتساب عمولة "فرع جديد" لهذا المبلغ، واعتبار المتبقي ({formatNumber(editSales2025 - editSplitSalesP1)}) كمبيعات خاضعة للمقارنة بنمو السنة السابقة.
+                      </p>
+                    </motion.div>
+                  )}
                 </div>
 
               <div className="mt-10 flex gap-4">
