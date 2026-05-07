@@ -20,7 +20,10 @@ import {
   ChevronUp,
   ChevronDown,
   Archive,
-  History
+  History,
+  Printer,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { SUPERVISORS_DATA, calculateCommissionRate, SupervisorGroup } from '@/lib/commission-utils';
 import { createClient } from '@/utils/supabase/client';
@@ -133,6 +136,7 @@ export default function CommissionsPage() {
   }, [dbSupervisors]);
 
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+  const [isSidebarPinned, setIsSidebarPinned] = useState(false);
 
   const requestSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -347,6 +351,76 @@ export default function CommissionsPage() {
       console.error('Error during export/archive:', error);
       alert('حدث خطأ أثناء حفظ الأرشيف، تأكد من وجود الجداول المطلوبة');
     }
+  };
+
+  const handlePrintSupervisors = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const tableContent = filteredSupervisors.map((sup, idx) => `
+      <tr>
+        <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${idx + 1}</td>
+        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: bold;">${sup.name}</td>
+        <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${sup.branchesCount}</td>
+        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; direction: ltr;">${formatNumber(sup.share * 100, 1)}%</td>
+        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: bold; direction: ltr;">${formatNumber(sup.supervisorCommission, 2)}</td>
+      </tr>
+    `).join('');
+
+    const totalCommission = filteredSupervisors.reduce((sum, s) => sum + s.supervisorCommission, 0);
+
+    printWindow.document.write(`
+      <html dir="rtl">
+        <head>
+          <title>تقرير عمولات المشرفين</title>
+          <style>
+            body { font-family: 'Arial', sans-serif; padding: 40px; color: #333; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background-color: #f8fafc; padding: 12px; border: 1px solid #ddd; text-align: right; }
+            .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #3b82f6; padding-bottom: 20px; }
+            .footer { margin-top: 40px; text-align: left; font-size: 14px; color: #666; }
+            .total-row { background-color: #f1f5f9; font-weight: bold; }
+            @media print { .no-print { display: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1 style="margin: 0; color: #1e293b;">تقرير عمولات المشرفين</h1>
+            <p style="margin: 10px 0 0 0; color: #64748b;">التاريخ: ${new Date().toLocaleDateString('ar-EG')} | شهر التقرير: ${selectedMonth}</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align: center; width: 50px;">م</th>
+                <th>اسم المشرف</th>
+                <th style="text-align: center;">عدد الفروع</th>
+                <th style="text-align: center;">الحصة</th>
+                <th style="text-align: right;">إجمالي العمولة</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableContent}
+              <tr class="total-row">
+                <td colspan="4" style="padding: 15px; text-align: left; border: 1px solid #ddd;">الإجمالي الكلي</td>
+                <td style="padding: 15px; text-align: right; border: 1px solid #ddd;">${formatNumber(totalCommission, 2)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="footer">
+            <p>تم استخراج هذا التقرير من نظام إدارة العمولات</p>
+          </div>
+          <script>
+            window.onload = () => {
+              setTimeout(() => {
+                window.print();
+                window.close();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   const fetchData = async () => {
@@ -682,8 +756,8 @@ export default function CommissionsPage() {
   }, [filteredResults]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 w-full mx-auto px-6 md:px-10 pb-12 transition-all duration-500" dir="rtl">
-      <header className="py-10 flex justify-between items-start border-b border-slate-200 dark:border-slate-800/50 mb-8 transition-colors duration-500">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 w-full mx-auto px-2 md:px-3 pb-3 transition-all duration-500" dir="rtl">
+      <header className="py-2 flex justify-between items-center border-b border-slate-200 dark:border-slate-800/50 mb-2 transition-colors duration-500">
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -702,7 +776,7 @@ export default function CommissionsPage() {
               placeholder="ابحث عن فرع أو مشرف..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl pr-12 pl-12 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
+              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-sm pr-12 pl-12 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
             />
             {searchTerm && (
               <button 
@@ -723,15 +797,26 @@ export default function CommissionsPage() {
         </div>
       </header>
 
-      <div className="flex flex-col lg:flex-row gap-8">
+      <div className="flex flex-col lg:flex-row gap-2">
         {/* Sidebar (Right - Flexible) */}
-        <aside className="w-full lg:w-20 hover:lg:w-72 flex-shrink-0 transition-all duration-500 group/sidebar z-50 order-1">
+        <aside className={`w-full ${isSidebarPinned ? 'lg:w-72' : 'lg:w-20 hover:lg:w-72'} flex-shrink-0 transition-all duration-500 group/sidebar z-50 order-1`}>
           <div className="sticky top-6 flex flex-col gap-4 overflow-hidden">
-            {/* Sidebar content starting with search */}
+            {/* Navigation Tabs */}
+          <nav className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 rounded-md shadow-xl flex flex-col gap-1 transition-colors duration-500">
+            <button 
+              onClick={() => setIsSidebarPinned(!isSidebarPinned)}
+              className={`hidden lg:flex items-center justify-start px-2 py-1.5 mb-0.5 rounded-sm transition-all duration-300 relative group/pin ${
+                isSidebarPinned 
+                  ? 'text-emerald-500' 
+                  : 'text-slate-400 hover:text-emerald-500'
+              }`}
+              title={isSidebarPinned ? 'إلغاء تثبيت القائمة' : 'تثبيت القائمة'}
+            >
+              <div className="flex-shrink-0">
+                {isSidebarPinned ? <Lock size={18} strokeWidth={2.5} /> : <Unlock size={18} />}
+              </div>
+            </button>
 
-
-          {/* Navigation Tabs */}
-          <nav className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 rounded-3xl shadow-xl flex flex-col gap-1 transition-colors duration-500">
             {[
               { id: 'upload', label: 'رفع الملف', icon: Upload },
               { id: 'data', label: 'البيانات', icon: FileSpreadsheet },
@@ -743,16 +828,16 @@ export default function CommissionsPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 relative whitespace-nowrap ${
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-sm transition-all duration-300 relative whitespace-nowrap ${
                   activeTab === tab.id 
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' 
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-900/20' 
                     : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/40'
                 }`}
               >
                 <div className="flex-shrink-0">
-                  <tab.icon size={22} className={activeTab === tab.id ? 'text-white' : 'text-slate-400 dark:text-slate-500'} />
+                  <tab.icon size={20} className={activeTab === tab.id ? 'text-white' : 'text-slate-400 dark:text-slate-500'} />
                 </div>
-                <span className="font-bold text-sm lg:opacity-0 group-hover/sidebar:opacity-100 transition-all duration-300">
+                <span className={`font-bold text-sm lg:opacity-0 ${isSidebarPinned ? 'lg:opacity-100' : 'group-hover/sidebar:opacity-100'} transition-all duration-300`}>
                   {tab.label}
                 </span>
                 {activeTab === tab.id && (
@@ -773,24 +858,24 @@ export default function CommissionsPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center shadow-2xl transition-colors duration-500"
+              className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 text-center shadow-2xl transition-colors duration-500"
             >
               <div className="max-w-md mx-auto">
-                <div className="w-24 h-24 bg-blue-600/5 dark:bg-blue-600/10 rounded-3xl flex items-center justify-center mx-auto mb-6 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                <div className="w-24 h-24 bg-blue-600/5 dark:bg-blue-600/10 rounded-md flex items-center justify-center mx-auto mb-2 text-blue-600 dark:text-blue-400 border border-blue-500/20">
                   <Upload size={40} />
                 </div>
-                <h2 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-100">ارفع ملف الإكسل</h2>
-                <p className="text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">
+                <h2 className="text-2xl font-bold mb-2 text-slate-800 dark:text-slate-100">ارفع ملف الإكسل</h2>
+                <p className="text-slate-500 dark:text-slate-400 mb-2 leading-relaxed">
                   تأكد من أن الملف يحتوي على ورقتين بأسماء سنوات متتالية (مثلاً <span className="text-blue-400 font-bold">2024</span> و <span className="text-blue-400 font-bold">2025</span>). 
                   يجب أن يكون اسم الفرع في العمود الثاني والمبيعات في العمود الثالث.
                 </p>
                 
-                <div className="mb-8">
+                <div className="mb-2">
                   <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-widest text-right">اختر الشهر الحالي للتقرير</label>
                   <select 
                     value={selectedMonth} 
                     onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-5 py-3 text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm px-5 py-3 text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold"
                   >
                     {[
                       'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 
@@ -802,7 +887,7 @@ export default function CommissionsPage() {
                 </div>
 
                 <label className="relative group cursor-pointer block">
-                  <div className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-8 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl shadow-blue-900/30">
+                  <div className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-8 rounded-sm transition-all flex items-center justify-center gap-3 shadow-xl shadow-blue-900/30">
                     {isLoading ? 'جاري المعالجة...' : 'اختيار ملف الإكسل'}
                     <Plus size={24} />
                   </div>
@@ -830,16 +915,16 @@ export default function CommissionsPage() {
               key="data"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="grid md:grid-cols-2 gap-8"
+              className="grid md:grid-cols-2 gap-4"
             >
-              <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-6 h-fit shadow-2xl transition-colors duration-500">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-indigo-600/5 dark:bg-indigo-600/10 rounded-lg text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+              <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 h-fit shadow-2xl transition-colors duration-500">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-indigo-600/5 dark:bg-indigo-600/10 rounded-sm text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
                     <FileSpreadsheet size={20} />
                   </div>
                   <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">بيانات {yearPrev}</h3>
                 </div>
-                <div className="overflow-auto max-h-[calc(100vh-450px)] custom-scrollbar rounded-xl border border-slate-200 dark:border-slate-800/50 transition-colors">
+                <div className="overflow-auto max-h-[calc(100vh-450px)] custom-scrollbar rounded-md border border-slate-200 dark:border-slate-800/50 transition-colors">
                   <div className="grid grid-cols-[50px_1fr_100px] gap-0 text-slate-500 text-sm border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-bold sticky top-0 z-10 transition-colors">
                     <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800">م</div>
                     <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">الفرع</div>
@@ -857,14 +942,14 @@ export default function CommissionsPage() {
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-6 h-fit shadow-2xl transition-colors duration-500">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-blue-600/5 dark:bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 border border-blue-500/20">
+              <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 h-fit shadow-2xl transition-colors duration-500">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-blue-600/5 dark:bg-blue-600/10 rounded-sm text-blue-600 dark:text-blue-400 border border-blue-500/20">
                     <FileSpreadsheet size={20} />
                   </div>
                   <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">بيانات {yearCurr}</h3>
                 </div>
-                <div className="overflow-auto max-h-[calc(100vh-450px)] custom-scrollbar rounded-xl border border-slate-200 dark:border-slate-800/50 transition-colors">
+                <div className="overflow-auto max-h-[calc(100vh-450px)] custom-scrollbar rounded-md border border-slate-200 dark:border-slate-800/50 transition-colors">
                   <div className="grid grid-cols-[50px_1fr_100px] gap-0 text-slate-500 text-sm border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-bold sticky top-0 z-10 transition-colors">
                     <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800">م</div>
                     <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">الفرع</div>
@@ -889,35 +974,35 @@ export default function CommissionsPage() {
               key="results"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-8 overflow-hidden shadow-2xl transition-colors duration-500"
+              className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-4 overflow-hidden shadow-2xl transition-colors duration-500"
             >
-              <div className="flex justify-between items-center mb-8">
+              <div className="flex items-center gap-6 mb-2 w-fit">
                 <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">تقرير العمولات المحتسبة</h3>
                 <button 
                   onClick={handleExportAndArchive}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-blue-900/20 font-bold"
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-md transition-all shadow-lg shadow-blue-900/20 font-bold"
                 >
                   <Download size={18} />
                   تصدير النتائج والأرشفة
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl transition-colors">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
+                <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-3 rounded-md transition-colors">
                   <p className="text-xs text-slate-500 uppercase font-bold mb-2">إجمالي مبيعات {yearPrev}</p>
                   <p className="text-3xl font-black text-slate-800 dark:text-white english-nums">{formatNumber(resultsTotals.sales2024)}</p>
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl transition-colors border-l-4 border-l-blue-500/50">
+                <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-3 rounded-md transition-colors border-l-4 border-l-blue-500/50">
                   <p className="text-xs text-slate-500 uppercase font-bold mb-2">إجمالي مبيعات {yearCurr}</p>
                   <p className="text-3xl font-black text-slate-800 dark:text-white english-nums">{formatNumber(resultsTotals.sales2025)}</p>
                 </div>
-                <div className="bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 p-6 rounded-3xl transition-colors border-l-4 border-l-emerald-500">
+                <div className="bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-md transition-colors border-l-4 border-l-emerald-500">
                   <p className="text-xs text-emerald-600 dark:text-emerald-400 uppercase font-bold mb-2">إجمالي العمولات</p>
                   <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 english-nums">{formatNumber(resultsTotals.commission, 2)}</p>
                 </div>
               </div>
 
-              <div className="overflow-auto max-h-[calc(100vh-350px)] custom-scrollbar rounded-2xl border border-slate-200 dark:border-slate-800/50 transition-colors">
+              <div className="overflow-auto max-h-[calc(100vh-350px)] custom-scrollbar rounded-sm border border-slate-200 dark:border-slate-800/50 transition-colors">
                 <div className="min-w-[1400px]">
                   <div className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 text-sm text-slate-500 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-950 sticky top-0 z-10 transition-colors">
                     <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800">م</div>
@@ -979,7 +1064,7 @@ export default function CommissionsPage() {
                               setIsResultEditModalOpen(true);
                               setSearchTerm('');
                             }}
-                            className="p-1.5 hover:bg-blue-600/20 rounded-lg text-blue-400 opacity-0 group-hover/edit:opacity-100 transition-all ml-1"
+                            className="p-1.5 hover:bg-blue-600/20 rounded-sm text-blue-400 opacity-0 group-hover/edit:opacity-100 transition-all ml-1"
                             title="تعديل المبيعات"
                           >
                             <Edit2 size={14} />
@@ -1004,23 +1089,23 @@ export default function CommissionsPage() {
               className="space-y-6"
             >
               {!selectedArchive ? (
-                <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl transition-colors duration-500">
-                  <div className="flex items-center gap-3 mb-8">
-                    <div className="p-2 bg-blue-600/5 dark:bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 shadow-2xl transition-colors duration-500">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 bg-blue-600/5 dark:bg-blue-600/10 rounded-sm text-blue-600 dark:text-blue-400 border border-blue-500/20">
                       <History size={24} />
                     </div>
                     <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">سجل الأرشيف</h3>
                   </div>
 
-                  <div className="grid gap-4">
+                  <div className="grid gap-2">
                     {archives.length > 0 ? archives.map((arc) => (
                       <div 
                         key={arc.id}
-                        className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex items-center justify-between hover:border-blue-500/30 transition-all cursor-pointer group"
+                        className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-4 rounded-sm flex items-center justify-between hover:border-blue-500/30 transition-all cursor-pointer group"
                         onClick={() => viewArchiveDetails(arc.id)}
                       >
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-xl flex items-center justify-center text-slate-400 dark:text-slate-500 group-hover:text-blue-500 transition-colors border border-slate-100 dark:border-transparent">
+                        <div className="flex items-center gap-2">
+                          <div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-md flex items-center justify-center text-slate-400 dark:text-slate-500 group-hover:text-blue-500 transition-colors border border-slate-100 dark:border-transparent">
                             <FileSpreadsheet size={24} />
                           </div>
                           <div>
@@ -1028,7 +1113,7 @@ export default function CommissionsPage() {
                             <p className="text-xs text-slate-400 dark:text-slate-500">{new Date(arc.created_at).toLocaleString('ar-EG')}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-3">
                           <div className="text-right">
                             <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">إجمالي العمولات</p>
                             <p className="font-mono font-bold text-emerald-600 dark:text-emerald-400 english-nums">{formatNumber(arc.total_commission, 2)}</p>
@@ -1038,7 +1123,7 @@ export default function CommissionsPage() {
                               e.stopPropagation();
                               handleDeleteArchive(arc.id);
                             }}
-                            className="p-3 hover:bg-rose-500/10 rounded-2xl text-slate-400 dark:text-slate-500 hover:text-rose-500 border border-transparent hover:border-rose-500/20 transition-all"
+                            className="p-3 hover:bg-rose-500/10 rounded-sm text-slate-400 dark:text-slate-500 hover:text-rose-500 border border-transparent hover:border-rose-500/20 transition-all"
                           >
                             <Trash2 size={18} />
                           </button>
@@ -1046,7 +1131,7 @@ export default function CommissionsPage() {
                       </div>
                     )) : (
                       <div className="py-20 text-center text-slate-600">
-                        <Archive size={48} className="mx-auto mb-4 opacity-20" />
+                        <Archive size={48} className="mx-auto mb-2 opacity-20" />
                         <p>لا توجد ملفات مؤرشفة حالياً</p>
                       </div>
                     )}
@@ -1054,11 +1139,11 @@ export default function CommissionsPage() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl flex items-center justify-between transition-colors duration-500">
-                    <div className="flex items-center gap-4">
+                  <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 shadow-2xl flex items-center gap-6 transition-colors duration-500 w-fit">
+                    <div className="flex items-center gap-2">
                       <button 
                         onClick={() => setSelectedArchive(null)}
-                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 transition-colors"
+                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 transition-colors"
                       >
                         <X size={20} />
                       </button>
@@ -1067,7 +1152,7 @@ export default function CommissionsPage() {
                         <p className="text-xs text-slate-400 dark:text-slate-500">بتاريخ {new Date(selectedArchive.created_at).toLocaleString('ar-EG')}</p>
                       </div>
                     </div>
-                    <div className="flex gap-8 text-right">
+                    <div className="flex gap-4 text-right">
                       <div>
                         <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">إجمالي الفروع</p>
                         <p className="font-mono font-bold text-emerald-600 dark:text-emerald-400 english-nums">{formatNumber(selectedArchive.total_commission, 2)}</p>
@@ -1079,8 +1164,8 @@ export default function CommissionsPage() {
                     </div>
                   </div>
 
-                  <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl overflow-hidden transition-colors duration-500">
-                    <div className="overflow-auto max-h-[calc(100vh-400px)] custom-scrollbar rounded-xl border border-slate-200 dark:border-slate-800/50">
+                  <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 shadow-2xl overflow-hidden transition-colors duration-500">
+                    <div className="overflow-auto max-h-[calc(100vh-400px)] custom-scrollbar rounded-md border border-slate-200 dark:border-slate-800/50">
                       <div className="min-w-[1400px]">
                         <div className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 text-sm text-slate-400 dark:text-slate-500 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-950 sticky top-0 z-10 transition-colors">
                           <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800">م</div>
@@ -1125,7 +1210,7 @@ export default function CommissionsPage() {
               animate={{ opacity: 1 }}
               className="space-y-6"
             >
-              <div className="flex justify-between items-center bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-4 rounded-2xl mb-4 shadow-xl transition-colors duration-500">
+              <div className="flex items-center gap-6 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-4 rounded-sm mb-2 shadow-xl transition-colors duration-500 w-fit">
                 <div>
                   <h3 className="text-xl font-bold mb-0.5 text-slate-800 dark:text-slate-100">إدارة الفروع والربط</h3>
                   <p className="text-xs text-slate-400 dark:text-slate-400">إضافة الفروع وربطها بالمشرفين المخصصين</p>
@@ -1139,7 +1224,7 @@ export default function CommissionsPage() {
                       setIsBranchModalOpen(true);
                       setSearchTerm('');
                     }}
-                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-blue-900/40 text-sm font-bold"
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-all shadow-lg shadow-blue-900/40 text-sm font-bold"
                   >
                     <Plus size={18} />
                     إضافة فرع جديد
@@ -1147,7 +1232,7 @@ export default function CommissionsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
                 {filteredBranches.map((branch) => {
                   const assignments = dbAssignments.filter(a => a.branch_id === branch.id);
                   const assignedSups = assignments.map(a => dbSupervisors.find(s => s.id === a.supervisor_id));
@@ -1159,7 +1244,7 @@ export default function CommissionsPage() {
                       key={branch.id}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className={`bg-white dark:bg-slate-900/40 backdrop-blur-2xl border ${supColor ? supColor.border : 'border-slate-200 dark:border-slate-800'} rounded-2xl p-4 ${supColor ? supColor.hover : 'hover:border-blue-500/50'} transition-all group shadow-lg relative overflow-hidden`}
+                      className={`bg-white dark:bg-slate-900/40 backdrop-blur-2xl border ${supColor ? supColor.border : 'border-slate-200 dark:border-slate-800'} rounded-sm p-4 ${supColor ? supColor.hover : 'hover:border-blue-500/50'} transition-all group shadow-lg relative overflow-hidden`}
                     >
                       {supColor && (
                         <div className={`absolute top-0 right-0 w-1.5 h-full ${supColor.accent} opacity-50`} />
@@ -1177,7 +1262,7 @@ export default function CommissionsPage() {
                               setIsBranchModalOpen(true);
                               setSearchTerm('');
                             }}
-                            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-100 transition-colors"
+                            className="p-1.5 hover:bg-slate-800 rounded-sm text-slate-400 hover:text-slate-100 transition-colors"
                           >
                             <Edit2 size={14} />
                           </button>
@@ -1188,7 +1273,7 @@ export default function CommissionsPage() {
                                 fetchData();
                               }
                             }}
-                            className="p-1.5 hover:bg-rose-500/10 rounded-lg text-slate-400 hover:text-rose-400 transition-colors"
+                            className="p-1.5 hover:bg-rose-500/10 rounded-sm text-slate-400 hover:text-rose-400 transition-colors"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -1199,7 +1284,7 @@ export default function CommissionsPage() {
                         {assignedSups.length > 0 ? assignedSups.map((sup, idx) => {
                           const sColor = sup ? supervisorColorMap[sup.id] : null;
                           return (
-                            <div key={idx} className={`flex justify-between text-[11px] ${sColor ? sColor.bg : 'bg-slate-800/30'} p-1.5 rounded-lg border ${sColor ? sColor.border : 'border-slate-700/30'} transition-colors`}>
+                            <div key={idx} className={`flex justify-between text-[11px] ${sColor ? sColor.bg : 'bg-slate-800/30'} p-1.5 rounded-sm border ${sColor ? sColor.border : 'border-slate-700/30'} transition-colors`}>
                               <span className={`truncate max-w-[100px] font-bold ${sColor ? sColor.text : 'text-slate-400'}`}>{sup?.name || 'مجهول'}</span>
                               <span className={`${sColor ? sColor.text : 'text-blue-400'} font-bold english-nums`}>{formatNumber(assignments[idx].share * 100, 1)}%</span>
                             </div>
@@ -1222,26 +1307,35 @@ export default function CommissionsPage() {
               animate={{ opacity: 1 }}
               className="space-y-6"
             >
-              <div className="flex justify-between items-center bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-4 rounded-2xl mb-4 shadow-xl transition-colors duration-500">
-                <div>
+              <div className="flex items-center gap-3 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-4 pr-6 rounded-sm mb-2 shadow-xl transition-colors duration-500 w-fit">
+                <div className="flex-shrink-0">
                   <h3 className="text-xl font-bold mb-0.5 text-slate-800 dark:text-slate-100">إدارة المشرفين</h3>
                   <p className="text-xs text-slate-400 dark:text-slate-400">إدارة قائمة المشرفين في النظام</p>
                 </div>
-                <button 
-                  onClick={() => {
-                    setEditingSupervisor(null);
-                    setModalSupervisorName('');
-                    setIsSupervisorModalOpen(true);
-                    setSearchTerm('');
-                  }}
-                  className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-blue-900/40 text-sm font-bold"
-                >
-                  <Plus size={18} />
-                  إضافة مشرف
-                </button>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => {
+                      setEditingSupervisor(null);
+                      setModalSupervisorName('');
+                      setIsSupervisorModalOpen(true);
+                      setSearchTerm('');
+                    }}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-all shadow-lg shadow-blue-900/40 text-sm font-bold"
+                  >
+                    <Plus size={18} />
+                    إضافة مشرف
+                  </button>
+                  <button 
+                    onClick={handlePrintSupervisors}
+                    className="bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-md flex items-center gap-2 transition-all border border-slate-200 dark:border-slate-700 shadow-sm text-sm font-bold"
+                  >
+                    <Printer size={18} />
+                    طباعة التقرير
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
                 {filteredSupervisors.map((calc) => {
                   const supColor = supervisorColorMap[calc.id];
                   return (
@@ -1249,13 +1343,13 @@ export default function CommissionsPage() {
                       key={calc.id}
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className={`bg-white dark:bg-slate-900/40 backdrop-blur-2xl border ${supColor ? supColor.border : 'border-slate-200 dark:border-slate-800'} rounded-2xl p-4 ${supColor ? supColor.hover : 'hover:border-blue-500/50'} transition-all group shadow-lg relative overflow-hidden`}
+                      className={`bg-white dark:bg-slate-900/40 backdrop-blur-2xl border ${supColor ? supColor.border : 'border-slate-200 dark:border-slate-800'} rounded-sm p-4 ${supColor ? supColor.hover : 'hover:border-blue-500/50'} transition-all group shadow-lg relative overflow-hidden`}
                     >
                       {supColor && (
                         <div className={`absolute top-0 right-0 w-1.5 h-full ${supColor.accent} opacity-50`} />
                       )}
                       <div className="flex justify-between items-start mb-3">
-                        <div className={`p-2 ${supColor ? supColor.bg : 'bg-blue-600/5 dark:bg-blue-600/10'} rounded-xl ${supColor ? supColor.text : 'text-blue-600 dark:text-blue-400'} border ${supColor ? supColor.border : 'border-blue-500/20'}`}>
+                        <div className={`p-2 ${supColor ? supColor.bg : 'bg-blue-600/5 dark:bg-blue-600/10'} rounded-md ${supColor ? supColor.text : 'text-blue-600 dark:text-blue-400'} border ${supColor ? supColor.border : 'border-blue-500/20'}`}>
                           <Users size={18} />
                         </div>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1265,7 +1359,7 @@ export default function CommissionsPage() {
                             setModalSupervisorName(calc.name);
                             setIsSupervisorModalOpen(true);
                           }}
-                          className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-100 transition-colors"
+                          className="p-1.5 hover:bg-slate-800 rounded-sm text-slate-400 hover:text-slate-100 transition-colors"
                         >
                           <Edit2 size={14} />
                         </button>
@@ -1276,7 +1370,7 @@ export default function CommissionsPage() {
                               fetchData();
                             }
                           }}
-                          className="p-1.5 hover:bg-rose-500/10 rounded-lg text-slate-400 hover:text-rose-400 transition-colors"
+                          className="p-1.5 hover:bg-rose-500/10 rounded-sm text-slate-400 hover:text-rose-400 transition-colors"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -1285,7 +1379,7 @@ export default function CommissionsPage() {
                     <div className="flex justify-between items-center mb-3">
                       <div className="flex items-center gap-2 flex-1 truncate">
                         <h4 className={`text-base font-bold ${supColor ? supColor.text : 'text-slate-100'} truncate`}>{calc.name}</h4>
-                        <span className={`px-1.5 py-0.5 rounded-lg ${supColor ? supColor.bg : 'bg-slate-800/50'} ${supColor ? supColor.text : 'text-slate-400'} text-[9px] font-bold border ${supColor ? supColor.border : 'border-slate-700/30'} flex items-center gap-1 shadow-sm`}>
+                        <span className={`px-1.5 py-0.5 rounded-sm ${supColor ? supColor.bg : 'bg-slate-800/50'} ${supColor ? supColor.text : 'text-slate-400'} text-[9px] font-bold border ${supColor ? supColor.border : 'border-slate-700/30'} flex items-center gap-1 shadow-sm`}>
                           <FileSpreadsheet size={10} />
                           {formatNumber(calc.branchesCount)}
                         </span>
@@ -1295,7 +1389,7 @@ export default function CommissionsPage() {
                       </span>
                     </div>
                     
-                    <div className={`${supColor ? supColor.bg : 'bg-slate-50 dark:bg-blue-600/10'} p-2.5 rounded-xl border ${supColor ? supColor.border : 'border-slate-200 dark:border-blue-500/30'} transition-colors`}>
+                    <div className={`${supColor ? supColor.bg : 'bg-slate-50 dark:bg-blue-600/10'} p-2.5 rounded-md border ${supColor ? supColor.border : 'border-slate-200 dark:border-blue-500/30'} transition-colors`}>
                       <p className={`text-[9px] ${supColor ? supColor.text : 'text-slate-500 dark:text-blue-400'} uppercase tracking-wider mb-0.5`}>العمولة</p>
                       <p className={`text-lg font-mono font-bold ${supColor ? supColor.text : 'text-[#800000] dark:text-blue-400'} english-nums`}>{formatNumber(calc.supervisorCommission, 2)}</p>
                     </div>
@@ -1324,16 +1418,16 @@ export default function CommissionsPage() {
               <div className="p-5 space-y-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-400 mb-1 uppercase tracking-wider">اسم الفرع</label>
-                  <input value={modalBranchName} onChange={(e) => setModalBranchName(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors" />
+                  <input value={modalBranchName} onChange={(e) => setModalBranchName(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-400 mb-1 uppercase tracking-wider">يوم الافتتاح (1-31)</label>
-                    <input type="number" min="1" max="31" value={modalBranchOpeningDay} onChange={(e) => setModalBranchOpeningDay(e.target.value ? Number(e.target.value) : '')} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors" />
+                    <input type="number" min="1" max="31" value={modalBranchOpeningDay} onChange={(e) => setModalBranchOpeningDay(e.target.value ? Number(e.target.value) : '')} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors" />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-400 mb-1 uppercase tracking-wider">شهر الافتتاح</label>
-                    <select value={modalBranchOpeningMonth} onChange={(e) => setModalBranchOpeningMonth(e.target.value ? Number(e.target.value) : '')} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors">
+                    <select value={modalBranchOpeningMonth} onChange={(e) => setModalBranchOpeningMonth(e.target.value ? Number(e.target.value) : '')} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors">
                       <option value="">اختر الشهر...</option>
                       {['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'].map((m, i) => (
                         <option key={i+1} value={i+1}>{m}</option>
@@ -1348,12 +1442,12 @@ export default function CommissionsPage() {
                   </div>
                   <div className="space-y-2 max-h-[250px] overflow-y-auto custom-scrollbar pr-1">
                     {modalBranchSupervisors.map((s, idx) => (
-                      <div key={idx} className="flex gap-2 items-center bg-slate-50 dark:bg-slate-800/30 p-2 rounded-xl border border-slate-200 dark:border-slate-800/50">
+                      <div key={idx} className="flex gap-2 items-center bg-slate-50 dark:bg-slate-800/30 p-2 rounded-md border border-slate-200 dark:border-slate-800/50">
                         <select value={s.id} onChange={(e) => {
                           const newSups = [...modalBranchSupervisors];
                           newSups[idx].id = e.target.value;
                           setModalBranchSupervisors(newSups);
-                        }} className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-white outline-none">
+                        }} className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm px-2 py-1.5 text-xs text-slate-800 dark:text-white outline-none">
                           <option value="">اختر مشرف...</option>
                           {dbSupervisors.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
                         </select>
