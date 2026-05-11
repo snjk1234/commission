@@ -31,3 +31,4 @@ ALTER TABLE commission_branch_assignments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public Access" ON commission_branches FOR ALL USING (true);
 CREATE POLICY "Public Access" ON commission_supervisors FOR ALL USING (true);
 CREATE POLICY "Public Access" ON commission_branch_assignments FOR ALL USING (true);
+
