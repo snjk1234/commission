@@ -92,9 +92,11 @@ export const SUPERVISORS_DATA: SupervisorGroup[] = [
 
 export function calculateCommissionRate(growth: number, isNew: boolean, branchName: string): number {
   if (isNew) {
-    const isMall = branchName.includes('مول') || 
-                   branchName.toLowerCase().includes('mall');
-    return isMall ? 0.02 : 0.01;
+    const isMallOrPark = branchName.includes('مول') || 
+                   branchName.includes('بارك') ||
+                   branchName.toLowerCase().includes('mall') ||
+                   branchName.toLowerCase().includes('park');
+    return isMallOrPark ? 0.02 : 0.01;
   }
   
   if (growth < 0) return 0;
