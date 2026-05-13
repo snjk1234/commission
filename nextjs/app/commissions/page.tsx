@@ -23,7 +23,16 @@ import {
   History,
   Printer,
   Lock,
-  Unlock
+  Unlock,
+  LayoutDashboard,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  AlertTriangle,
+  TrendingDown,
+  TrendingUp,
+  Award,
+  Bell
 } from 'lucide-react';
 import { SUPERVISORS_DATA, calculateCommissionRate, SupervisorGroup } from '@/lib/commission-utils';
 import { createClient } from '@/utils/supabase/client';
@@ -83,10 +92,20 @@ interface CalculatedData {
 }
 
 export default function CommissionsPage() {
-  const [activeTab, setActiveTab] = useState('upload');
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [isAlertsOpen, setIsAlertsOpen] = useState(false);
+  const [isAmountsHidden, setIsAmountsHidden] = useState(true);
   const [data2024, setData2024] = useState<ExcelRow[]>([]);
   const [data2025, setData2025] = useState<ExcelRow[]>([]);
   const [calculatedData, setCalculatedData] = useState<CalculatedData[]>([]);
+  const [activeFilterType, setActiveFilterType] = useState<'all' | 'new' | 'partial' | 'no-supervisor' | 'no-sales' | 'zero-sales' | 'supervisor' | 'branch'>('all');
+
+  const navigateTo = (tab: string, filterStr: string = '', filterType: typeof activeFilterType = 'all') => {
+    setActiveTab(tab);
+    setSearchTerm(filterStr);
+    setActiveFilterType(filterType);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   
   // Database State
   const [dbBranches, setDbBranches] = useState<{id: string, name: string}[]>([]);
@@ -146,9 +165,8 @@ export default function CommissionsPage() {
     setSortConfig({ key, direction });
   };
 
-  // Clear search on tab change
+  // Fetch archives when switching to archive tab
   useEffect(() => {
-    setSearchTerm('');
     if (activeTab === 'archive') {
       fetchArchives();
     }
@@ -185,6 +203,24 @@ export default function CommissionsPage() {
       
       setSelectedArchive(archive);
       setArchiveDetails(items || []);
+      
+      // Treat archived data as current data for all tabs
+      if (items && items.length > 0) {
+        const reconstructed2024 = items.map(item => ({
+          branchName: item.branch_name,
+          normalizedName: normalizeArabic(item.branch_name),
+          sales: item.sales_2024
+        }));
+        const reconstructed2025 = items.map(item => ({
+          branchName: item.branch_name,
+          normalizedName: normalizeArabic(item.branch_name),
+          sales: item.sales_2025
+        }));
+        
+        setData2024(reconstructed2024);
+        setData2025(reconstructed2025);
+      }
+      
       setSearchTerm(''); // Clear search when viewing archive details
     } catch (err) {
       console.error(err);
@@ -374,11 +410,13 @@ export default function CommissionsPage() {
         <head>
           <title>تقرير عمولات المشرفين</title>
           <style>
-            body { font-family: 'Arial', sans-serif; padding: 40px; color: #333; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th { background-color: #f8fafc; padding: 12px; border: 1px solid #ddd; text-align: right; }
-            .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #3b82f6; padding-bottom: 20px; }
-            .footer { margin-top: 40px; text-align: left; font-size: 14px; color: #666; }
+            @import url('https://fonts.googleapis.com/css2?family=Changa:wght@300;400;700&display=swap');
+            body { font-family: 'Changa', sans-serif; padding: 40px; color: #333; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+            th { background-color: #f8fafc; padding: 10px; border: 1px solid #ddd; text-align: right; font-size: 13px; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px; }
+            .header h1 { font-size: 24px; }
+            .footer { margin-top: 30px; text-align: left; font-size: 12px; color: #666; }
             .total-row { background-color: #f1f5f9; font-weight: bold; }
             @media print { .no-print { display: none; } }
           </style>
@@ -444,6 +482,13 @@ export default function CommissionsPage() {
     fetchData();
   }, []);
 
+  // Update calculations when dependencies change
+  useEffect(() => {
+    if (data2024.length > 0 && data2025.length > 0) {
+      performCalculations(data2024, data2025);
+    }
+  }, [dbBranches, dbAssignments, dbSupervisors, selectedMonth, data2024, data2025]);
+
   // Handle File Upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -453,7 +498,7 @@ export default function CommissionsPage() {
     setFileName(file.name);
     const reader = new FileReader();
 
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const data = new Uint8Array(event.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
@@ -503,8 +548,10 @@ export default function CommissionsPage() {
         // Calculate logic
         performCalculations(cleanPrev, cleanCurr);
         
+        // Archive the upload
+        await saveUploadToArchive(file.name, cleanPrev, cleanCurr);
+        
         setIsLoading(false);
-        setActiveTab('data');
         setSearchTerm('');
       } catch (error) {
         console.error(error);
@@ -514,6 +561,46 @@ export default function CommissionsPage() {
     };
 
     reader.readAsArrayBuffer(file);
+  };
+
+  const saveUploadToArchive = async (originalFileName: string, c2024: any[], c2025: any[]) => {
+    try {
+      const timestamp = new Date().toLocaleString('ar-EG', { hour12: false }).replace(/[/:]/g, '-');
+      const archiveFileName = `[رفع ملف] ${originalFileName} (${timestamp})`;
+      
+      const { data: archive, error: archiveError } = await supabase
+        .from('commission_archives')
+        .insert({
+          filename: archiveFileName,
+          total_commission: 0,
+          total_supervisors_commission: 0
+        })
+        .select()
+        .single();
+
+      if (archiveError) throw archiveError;
+
+      const data24Map = new Map(c2024.map(item => [item.normalizedName, item.sales]));
+      const archiveItems = c2025.map(item25 => {
+        const sales24 = data24Map.get(item25.normalizedName) || 0;
+        const sales25 = item25.sales;
+        return {
+          archive_id: archive.id,
+          branch_name: item25.branchName,
+          sales_2024: sales24,
+          sales_2025: sales25,
+          growth: sales24 !== 0 ? ((sales25 / sales24) - 1) * 100 : 0,
+          rate: 0,
+          commission: 0,
+          supervisor_names: '---',
+          supervisor_commission: 0
+        };
+      });
+
+      await supabase.from('commission_archive_items').insert(archiveItems);
+    } catch (err) {
+      console.error('Error saving upload to archive:', err);
+    }
   };
 
   const performCalculations = (c2024: any[], c2025: any[]) => {
@@ -716,14 +803,34 @@ export default function CommissionsPage() {
       });
     }
 
-    return sorted.filter(row => 
-      row.branchName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      row.supervisorNames.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [enrichedResults, searchTerm, sortConfig]);
+    return sorted.filter(row => {
+      // 1. Category Filter
+      if (activeFilterType === 'new' && !row.isNew) return false;
+      if (activeFilterType === 'partial' && !row.isSplit) return false;
+      if (activeFilterType === 'zero-sales' && row.sales2025 !== 0) return false;
+      if (activeFilterType === 'no-sales' && (!row.isSplit || row.sales2025 !== 0)) {
+        // Special logic for partial branches missing sales
+        if (activeFilterType === 'no-sales') {
+          const hasOpening = row.isSplit;
+          const noSales = row.sales2025 === 0;
+          if (!(hasOpening && noSales)) return false;
+        }
+      }
+
+      // 2. Search Filter (Name or Supervisor)
+      return row.branchName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             row.supervisorNames.toLowerCase().includes(searchTerm.toLowerCase());
+    });
+  }, [enrichedResults, searchTerm, sortConfig, activeFilterType]);
 
   const filteredBranches = useMemo(() => {
-    const filtered = dbBranches.filter(b => b.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    let filtered = [...dbBranches];
+    
+    if (activeFilterType === 'no-supervisor') {
+      filtered = filtered.filter(b => !dbAssignments.some(a => a.branch_id === b.id));
+    }
+
+    filtered = filtered.filter(b => b.name.toLowerCase().includes(searchTerm.toLowerCase()));
     
     return filtered.sort((a, b) => {
       const aAssignments = dbAssignments.filter(as => as.branch_id === a.id);
@@ -740,7 +847,7 @@ export default function CommissionsPage() {
       }
       return aSupName.localeCompare(bSupName, 'ar');
     });
-  }, [dbBranches, dbAssignments, dbSupervisors, searchTerm]);
+  }, [dbBranches, dbAssignments, dbSupervisors, searchTerm, activeFilterType]);
 
   const filteredSupervisors = useMemo(() => {
     return supervisorCalculations.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -757,39 +864,83 @@ export default function CommissionsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 w-full mx-auto px-2 md:px-3 pb-3 transition-all duration-500" dir="rtl">
-      <header className="py-2 flex justify-between items-center border-b border-slate-200 dark:border-slate-800/50 mb-2 transition-colors duration-500">
+      <header className="py-2 flex justify-between items-center border-b border-slate-200 dark:border-slate-800/50 mb-2 transition-colors duration-500 relative z-50">
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           className="text-right"
         >
-          <h1 className="text-4xl font-black bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent mb-1 uppercase tracking-tight">
+          <h1 className="text-5xl font-black bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent mb-1 uppercase tracking-tight">
             إدارة العمولات
           </h1>
-          <p className="text-slate-600 dark:text-slate-500 text-sm font-medium">نظام تحليل المبيعات واحتساب عمولات الفروع والمشرفين بدقة متناهية</p>
-          
-          {/* Moved Search Box */}
-          <div className="mt-6 w-full max-w-md relative group">
-            <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition-colors" size={20} />
-            <input 
-              type="text" 
-              placeholder="ابحث عن فرع أو مشرف..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-sm pr-12 pl-12 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
-            />
-            {searchTerm && (
-              <button 
-                onClick={() => setSearchTerm('')}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            )}
-          </div>
+          <p className="text-slate-600 dark:text-slate-500 text-[13px] font-bold">نظام تحليل المبيعات واحتساب عمولات الفروع والمشرفين بدقة متناهية</p>
         </motion.div>
         
         <div className="flex items-center gap-4">
+          {(() => {
+            // 1. Branches in DB that have no supervisor assigned (Configuration alert)
+            const noSupInDb = dbBranches.filter(b => !dbAssignments.some(a => a.branch_id === b.id));
+            
+            // 2. Sales-related alerts (Operational alerts)
+            const partialNoSales = calculatedData.length > 0 ? enrichedResults.filter(r => r.isSplit && !r.splitSalesP1) : [];
+            const zeroSales = calculatedData.length > 0 ? enrichedResults.filter(r => r.sales2025 === 0) : [];
+            
+            const totalAlerts = noSupInDb.length + partialNoSales.length + zeroSales.length;
+
+            return (
+              <div className="relative">
+                <button 
+                  onClick={() => setIsAlertsOpen(!isAlertsOpen)}
+                  onMouseEnter={() => setIsAlertsOpen(true)}
+                  className="relative h-10 w-10 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-400 shadow-sm transition-all duration-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-500 hover:border-amber-200"
+                >
+                  <Bell size={20} className={totalAlerts > 0 ? "animate-pulse text-amber-500" : ""} />
+                  {totalAlerts > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white dark:ring-slate-950">
+                      {totalAlerts}
+                    </span>
+                  )}
+                </button>
+                
+                <AnimatePresence>
+                  {isAlertsOpen && totalAlerts > 0 && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      onMouseLeave={() => setIsAlertsOpen(false)}
+                      className="absolute left-0 top-12 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md shadow-2xl z-50 overflow-hidden"
+                    >
+                      <div className="p-3 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+                        <AlertTriangle size={16} className="text-amber-500" />
+                        <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">تنبيهات وإجراءات مطلوبة</h3>
+                      </div>
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {noSupInDb.length > 0 && (
+                          <button onClick={() => { setIsAlertsOpen(false); navigateTo('branches', '', 'no-supervisor'); }} className="w-full text-right p-3 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors flex justify-between items-center group">
+                            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 group-hover:text-amber-700 dark:group-hover:text-amber-400">فروع بلا مشرفين (في النظام)</span>
+                            <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400 px-2 py-0.5 rounded-full text-xs font-bold english-nums">{noSupInDb.length}</span>
+                          </button>
+                        )}
+                        {partialNoSales.length > 0 && (
+                          <button onClick={() => { setIsAlertsOpen(false); navigateTo('results', '', 'partial'); }} className="w-full text-right p-3 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors flex justify-between items-center group">
+                            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 group-hover:text-amber-700 dark:group-hover:text-amber-400">فروع الافتتاح الجزئي</span>
+                            <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400 px-2 py-0.5 rounded-full text-xs font-bold english-nums">{partialNoSales.length}</span>
+                          </button>
+                        )}
+                        {zeroSales.length > 0 && (
+                          <button onClick={() => { setIsAlertsOpen(false); navigateTo('results', '', 'zero-sales'); }} className="w-full text-right p-3 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors flex justify-between items-center group">
+                            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 group-hover:text-rose-700 dark:group-hover:text-rose-400">فروع مبيعاتها صفر</span>
+                            <span className="bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-400 px-2 py-0.5 rounded-full text-xs font-bold english-nums">{zeroSales.length}</span>
+                          </button>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })()}
           <ThemeToggle />
           <div className="h-10 w-10 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-400 shadow-sm transition-colors duration-500">
             <Calculator size={20} />
@@ -818,8 +969,8 @@ export default function CommissionsPage() {
             </button>
 
             {[
-              { id: 'upload', label: 'رفع الملف', icon: Upload },
-              { id: 'data', label: 'البيانات', icon: FileSpreadsheet },
+              { id: 'dashboard', label: 'لوحة البيانات', icon: LayoutDashboard },
+              { id: 'upload', label: 'رفع البيانات', icon: Upload },
               { id: 'results', label: 'النتائج', icon: Calculator },
               { id: 'archive', label: 'الأرشيف', icon: Archive },
               { id: 'branches', label: 'الفروع', icon: FileSpreadsheet },
@@ -827,7 +978,11 @@ export default function CommissionsPage() {
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setSearchTerm('');
+                  setActiveFilterType('all');
+                }}
                 className={`flex items-center gap-3 px-4 py-2.5 rounded-sm transition-all duration-300 relative whitespace-nowrap ${
                   activeTab === tab.id 
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-900/20' 
@@ -852,121 +1007,398 @@ export default function CommissionsPage() {
         {/* Main Content Area (Left) */}
         <div className="flex-1 w-full order-2">
         <AnimatePresence mode="wait">
-          {activeTab === 'upload' && (
+          {activeTab === 'dashboard' && (
             <motion.div
-              key="upload"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 text-center shadow-2xl transition-colors duration-500"
+              key="dashboard"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
             >
-              <div className="max-w-md mx-auto">
-                <div className="w-24 h-24 bg-blue-600/5 dark:bg-blue-600/10 rounded-md flex items-center justify-center mx-auto mb-2 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                  <Upload size={40} />
-                </div>
-                <h2 className="text-2xl font-bold mb-2 text-slate-800 dark:text-slate-100">ارفع ملف الإكسل</h2>
-                <p className="text-slate-500 dark:text-slate-400 mb-2 leading-relaxed">
-                  تأكد من أن الملف يحتوي على ورقتين بأسماء سنوات متتالية (مثلاً <span className="text-blue-400 font-bold">2024</span> و <span className="text-blue-400 font-bold">2025</span>). 
-                  يجب أن يكون اسم الفرع في العمود الثاني والمبيعات في العمود الثالث.
-                </p>
-                
-                <div className="mb-2">
-                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-widest text-right">اختر الشهر الحالي للتقرير</label>
-                  <select 
-                    value={selectedMonth} 
-                    onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm px-5 py-3 text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold"
-                  >
-                    {[
-                      'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 
-                      'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
-                    ].map((m, i) => (
-                      <option key={i+1} value={i+1}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <label className="relative group cursor-pointer block">
-                  <div className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-8 rounded-sm transition-all flex items-center justify-center gap-3 shadow-xl shadow-blue-900/30">
-                    {isLoading ? 'جاري المعالجة...' : 'اختيار ملف الإكسل'}
-                    <Plus size={24} />
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row justify-start items-start sm:items-center gap-4 mb-4 transition-colors duration-500">
+                <div className="flex items-center gap-3 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 pl-4 rounded-full shadow-sm w-fit">
+                  <div className="p-2 bg-blue-600/10 rounded-full text-blue-600 dark:text-blue-400">
+                    <LayoutDashboard size={20} />
                   </div>
-                  <input 
-                    type="file" 
-                    accept=".xlsx, .xls" 
-                    className="hidden" 
-                    onChange={handleFileUpload}
-                    disabled={isLoading}
-                  />
-                </label>
-                
-                {fileName && (
-                  <div className="mt-6 flex items-center justify-center gap-2 text-green-400">
-                    <CheckCircle2 size={18} />
-                    <span>تم اختيار: {fileName}</span>
+                  <h2 className="text-md font-bold text-slate-800 dark:text-slate-100 ml-4">لوحة البيانات</h2>
+                  
+                  <div className="flex items-center gap-2 pr-4 border-r border-slate-200 dark:border-slate-800">
+                    <button 
+                      onClick={() => setIsAmountsHidden(!isAmountsHidden)}
+                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-500 dark:text-slate-400 transition-colors"
+                      title={isAmountsHidden ? 'إظهار المبالغ' : 'إخفاء المبالغ'}
+                    >
+                      {isAmountsHidden ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                    <button 
+                      onClick={() => navigateTo('upload')} 
+                      className="p-1.5 hover:bg-blue-600/10 rounded-full text-blue-600 transition-colors"
+                      title="رفع بيانات"
+                    >
+                      <Upload size={18} />
+                    </button>
                   </div>
-                )}
+                </div>
               </div>
+
+              {calculatedData.length === 0 ? (
+                <div className="bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-md p-12 text-center shadow-xl">
+                  <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                    <AlertCircle size={40} />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-700 dark:text-slate-300 mb-2">لا توجد بيانات للعرض</h3>
+                  <p className="text-slate-500 dark:text-slate-500 mb-6 max-w-md mx-auto">قم برفع ملف مبيعات جديد لعرض التحليلات والمؤشرات في لوحة البيانات.</p>
+                  <button onClick={() => navigateTo('upload')} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-md inline-flex items-center gap-2 transition-all shadow-lg font-bold">
+                    <Upload size={20} />
+                    الذهاب لرفع البيانات
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Financial Summary */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-5 rounded-md shadow-lg transition-all relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-1.5 h-full bg-slate-300 dark:bg-slate-700 opacity-50" />
+                      <p className="text-xs text-slate-500 uppercase font-bold mb-2">إجمالي مبيعات {yearPrev}</p>
+                      <p className="text-2xl font-black text-slate-800 dark:text-white english-nums transition-all duration-300">
+                        {isAmountsHidden ? '••••••••' : formatNumber(resultsTotals.sales2024)}
+                      </p>
+                    </div>
+                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-5 rounded-md shadow-lg transition-all relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-1.5 h-full bg-blue-500 opacity-50" />
+                      <p className="text-xs text-slate-500 uppercase font-bold mb-2">إجمالي مبيعات {yearCurr}</p>
+                      <div className="flex items-end justify-between">
+                        <p className="text-2xl font-black text-slate-800 dark:text-white english-nums transition-all duration-300">
+                          {isAmountsHidden ? '••••••••' : formatNumber(resultsTotals.sales2025)}
+                        </p>
+                        {(() => {
+                           const overallGrowth = resultsTotals.sales2024 !== 0 ? ((resultsTotals.sales2025 / resultsTotals.sales2024) - 1) * 100 : 0;
+                           return (
+                             <span className={`text-xs font-bold px-2 py-1 rounded-sm english-nums flex items-center gap-1 ${overallGrowth >= 0 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>
+                               {overallGrowth >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                               {formatNumber(overallGrowth, 2)}%
+                             </span>
+                           );
+                        })()}
+                      </div>
+                    </div>
+                    <div className="bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-md shadow-lg transition-all relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-1.5 h-full bg-emerald-500 opacity-50" />
+                      <div className="flex justify-between items-start mb-2">
+                        <p className="text-xs text-emerald-700 dark:text-emerald-400 uppercase font-bold">إجمالي عمولات الفروع</p>
+                        <div className="p-1.5 bg-emerald-500/10 rounded-sm text-emerald-600"><Award size={14} /></div>
+                      </div>
+                      <div className="flex items-end justify-between">
+                        <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 english-nums transition-all duration-300">
+                          {isAmountsHidden ? '••••••••' : formatNumber(resultsTotals.commission, 2)}
+                        </p>
+                        <p className="text-[10px] text-emerald-600/70 font-bold">
+                          {formatNumber((resultsTotals.commission / (resultsTotals.sales2025 || 1)) * 100, 2)}% من المبيعات
+                        </p>
+                      </div>
+                    </div>
+                    <div className="bg-[#800000]/5 dark:bg-blue-600/10 border border-[#800000]/20 dark:border-blue-500/20 p-5 rounded-md shadow-lg transition-all relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-1.5 h-full bg-[#800000] dark:bg-blue-500 opacity-50" />
+                      <div className="flex justify-between items-start mb-2">
+                        <p className="text-xs text-[#800000] dark:text-blue-400 uppercase font-bold">إجمالي عمولات المشرفين</p>
+                        <div className="p-1.5 bg-[#800000]/10 dark:bg-blue-500/10 rounded-sm text-[#800000] dark:text-blue-400"><Users size={14} /></div>
+                      </div>
+                      <p className="text-2xl font-black text-[#800000] dark:text-blue-400 english-nums transition-all duration-300">
+                        {isAmountsHidden ? '••••••••' : formatNumber(supervisorCalculations.reduce((acc, s) => acc + s.supervisorCommission, 0), 2)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Top Performers */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    {/* Top Sales */}
+                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md shadow-lg overflow-hidden flex flex-col group transition-all duration-500 max-h-[46px] hover:max-h-[350px]">
+                      <div className="bg-slate-50 dark:bg-slate-800/50 p-3 border-b border-transparent group-hover:border-slate-200 dark:group-hover:border-slate-800 flex justify-between items-center cursor-default h-[46px] shrink-0">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp size={18} className="text-blue-500" />
+                          <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">الأعلى مبيعاً</h3>
+                        </div>
+                        <ChevronDown size={16} className="text-slate-400 group-hover:rotate-180 transition-transform duration-300" />
+                      </div>
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800/50 flex-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-100">
+                        {[...enrichedResults].sort((a, b) => b.sales2025 - a.sales2025).slice(0, 5).map((branch, idx) => (
+                          <button key={branch.id} onClick={() => navigateTo('results', branch.branchName, 'branch')} className="w-full text-right p-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-bold text-slate-400 w-4">{idx + 1}</span>
+                              <span className="text-sm font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors truncate max-w-[150px]">{branch.branchName}</span>
+                            </div>
+                            <span className="text-sm font-bold text-slate-900 dark:text-white english-nums">
+                              {isAmountsHidden ? '••••' : formatNumber(branch.sales2025)}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Top Growth */}
+                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md shadow-lg overflow-hidden flex flex-col group transition-all duration-500 max-h-[46px] hover:max-h-[350px]">
+                      <div className="bg-slate-50 dark:bg-slate-800/50 p-3 border-b border-transparent group-hover:border-slate-200 dark:group-hover:border-slate-800 flex justify-between items-center cursor-default h-[46px] shrink-0">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp size={18} className="text-emerald-500" />
+                          <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">الأعلى نمواً (%)</h3>
+                        </div>
+                        <ChevronDown size={16} className="text-slate-400 group-hover:rotate-180 transition-transform duration-300" />
+                      </div>
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800/50 flex-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-100">
+                        {[...enrichedResults].filter(b => b.sales2024 > 0).sort((a, b) => b.growth - a.growth).slice(0, 5).map((branch, idx) => (
+                          <button key={branch.id} onClick={() => navigateTo('results', branch.branchName, 'branch')} className="w-full text-right p-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-bold text-slate-400 w-4">{idx + 1}</span>
+                              <span className="text-sm font-bold text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors truncate max-w-[150px]">{branch.branchName}</span>
+                            </div>
+                            <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 english-nums">
+                              +{formatNumber(branch.growth, 1)}%
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Needs Attention (Bottom Growth) */}
+                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md shadow-lg overflow-hidden flex flex-col group transition-all duration-500 max-h-[46px] hover:max-h-[350px]">
+                      <div className="bg-rose-50 dark:bg-rose-900/10 p-3 border-b border-transparent group-hover:border-rose-200 dark:group-hover:border-rose-900/30 flex justify-between items-center cursor-default h-[46px] shrink-0">
+                        <div className="flex items-center gap-2">
+                          <TrendingDown size={18} className="text-rose-500" />
+                          <h3 className="font-bold text-sm text-rose-800 dark:text-rose-300">أكبر تراجع (يحتاج انتباه)</h3>
+                        </div>
+                        <ChevronDown size={16} className="text-rose-400 group-hover:rotate-180 transition-transform duration-300" />
+                      </div>
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800/50 flex-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-100">
+                        {[...enrichedResults].filter(b => b.sales2024 > 0).sort((a, b) => a.growth - b.growth).slice(0, 5).map((branch, idx) => (
+                          <button key={branch.id} onClick={() => navigateTo('results', branch.branchName, 'branch')} className="w-full text-right p-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-bold text-slate-400 w-4">{idx + 1}</span>
+                              <span className="text-sm font-bold text-slate-700 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors truncate max-w-[150px]">{branch.branchName}</span>
+                            </div>
+                            <span className="text-sm font-bold text-rose-600 dark:text-rose-400 english-nums">
+                              {formatNumber(branch.growth, 1)}%
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Special Branches & Supervisors */}
+                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                    {/* Special Branches */}
+                    <div className="lg:col-span-1 space-y-4">
+                      {(() => {
+                        const newBranches = enrichedResults.filter(r => r.isNew);
+                        const partialBranches = enrichedResults.filter(r => r.isSplit);
+                        return (
+                          <>
+                            <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-4 rounded-md shadow-md">
+                              <button 
+                                onClick={() => navigateTo('results', '', 'new')}
+                                className="flex justify-between items-center mb-3 w-full group/h"
+                              >
+                                <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100 group-hover/h:text-blue-600 transition-colors">فروع جديدة</h3>
+                                <span className="bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 px-2 py-0.5 rounded-full text-xs font-bold english-nums">{newBranches.length}</span>
+                              </button>
+                              <div className="flex flex-wrap gap-1.5">
+                                {newBranches.slice(0, 10).map(b => (
+                                  <button key={b.id} onClick={() => navigateTo('results', b.branchName, 'branch')} className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-1 rounded-sm hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:text-blue-700 dark:hover:text-blue-300 transition-colors truncate max-w-[100px]">{b.branchName}</button>
+                                ))}
+                                {newBranches.length > 10 && <span className="text-[10px] text-slate-400 px-2 py-1">+{newBranches.length - 10}</span>}
+                                {newBranches.length === 0 && <span className="text-xs text-slate-400">لا يوجد فروع جديدة</span>}
+                              </div>
+                            </div>
+                            <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-4 rounded-md shadow-md">
+                              <button 
+                                onClick={() => navigateTo('results', '', 'partial')}
+                                className="flex justify-between items-center mb-3 w-full group/h"
+                              >
+                                <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100 group-hover/h:text-orange-600 transition-colors">افتتاح جزئي</h3>
+                                <span className="bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300 px-2 py-0.5 rounded-full text-xs font-bold english-nums">{partialBranches.length}</span>
+                              </button>
+                              <div className="flex flex-wrap gap-1.5">
+                                {partialBranches.slice(0, 10).map(b => (
+                                  <button key={b.id} onClick={() => navigateTo('results', b.branchName, 'branch')} className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-1 rounded-sm hover:bg-orange-100 dark:hover:bg-orange-900/50 hover:text-orange-700 dark:hover:text-orange-300 transition-colors truncate max-w-[100px]">{b.branchName}</button>
+                                ))}
+                                {partialBranches.length > 10 && <span className="text-[10px] text-slate-400 px-2 py-1">+{partialBranches.length - 10}</span>}
+                                {partialBranches.length === 0 && <span className="text-xs text-slate-400">لا يوجد فروع جزئية</span>}
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Supervisors Summary */}
+                    <div className="lg:col-span-3 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md shadow-lg overflow-hidden">
+                      <div className="bg-slate-50 dark:bg-slate-800/50 p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <Users size={18} className="text-slate-500" />
+                          <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">ملخص المشرفين</h3>
+                        </div>
+                      </div>
+                      <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                        {supervisorCalculations.filter(s => s.branchesCount > 0).sort((a,b) => b.supervisorCommission - a.supervisorCommission).map(sup => {
+                          const supColor = supervisorColorMap[sup.id];
+                          const supsBranchesNames = enrichedResults.filter(r => r.primarySupervisorId === sup.id).map(r => r.branchName).join('، ');
+                          return (
+                            <button 
+                              key={sup.id}
+                              title={`الفروع: ${supsBranchesNames}`}
+                              onClick={() => navigateTo('results', sup.name, 'supervisor')}
+                              className={`text-right p-3 rounded-md border ${supColor ? supColor.border : 'border-slate-200 dark:border-slate-700'} ${supColor ? supColor.hover : 'hover:border-blue-500'} bg-slate-50 dark:bg-slate-900/50 transition-colors group relative overflow-hidden`}
+                            >
+                              {supColor && <div className={`absolute right-0 top-0 w-1 h-full ${supColor.accent} opacity-30`} />}
+                              <p className="font-bold text-sm text-slate-800 dark:text-slate-200 mb-2 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{sup.name}</p>
+                              <div className="flex justify-between items-end">
+                                <span className="text-[10px] text-slate-500 bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded-sm border border-slate-200 dark:border-slate-700">
+                                  {sup.branchesCount} فروع
+                                </span>
+                                <span className={`text-sm font-black english-nums ${supColor ? supColor.text : 'text-slate-700 dark:text-slate-300'}`}>
+                                  {isAmountsHidden ? '••••' : formatNumber(sup.supervisorCommission)}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </motion.div>
           )}
 
-          {activeTab === 'data' && (
-            <motion.div
-              key="data"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="grid md:grid-cols-2 gap-4"
-            >
-              <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 h-fit shadow-2xl transition-colors duration-500">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-indigo-600/5 dark:bg-indigo-600/10 rounded-sm text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                    <FileSpreadsheet size={20} />
+          {activeTab === 'upload' && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row justify-start items-start sm:items-center gap-4 mb-4 transition-colors duration-500">
+                <div className="flex items-center gap-3 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 pl-4 rounded-full shadow-sm w-fit">
+                  <button onClick={() => navigateTo('dashboard')} title="العودة للوحة البيانات" className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors">
+                    <ArrowRight size={18} />
+                  </button>
+                  <div className="p-2 bg-blue-600/10 rounded-full text-blue-600 dark:text-blue-400">
+                    <Upload size={20} />
                   </div>
-                  <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">بيانات {yearPrev}</h3>
-                </div>
-                <div className="overflow-auto max-h-[calc(100vh-450px)] custom-scrollbar rounded-md border border-slate-200 dark:border-slate-800/50 transition-colors">
-                  <div className="grid grid-cols-[50px_1fr_100px] gap-0 text-slate-500 text-sm border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-bold sticky top-0 z-10 transition-colors">
-                    <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800">م</div>
-                    <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">الفرع</div>
-                    <div className="p-3 text-right">المبيعات</div>
-                  </div>
-                  <div className="divide-y divide-slate-200 dark:divide-slate-800/50 bg-white dark:bg-slate-900/20">
-                    {data2024.filter(r => r.branchName.toLowerCase().includes(searchTerm.toLowerCase())).map((row, i) => (
-                      <div key={i} className="grid grid-cols-[50px_1fr_100px] gap-0 items-center text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/40 transition-colors">
-                        <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-950/10 font-mono english-nums text-slate-400 dark:text-slate-500">{i + 1}</div>
-                        <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 truncate">{row.branchName}</div>
-                        <div className="p-3 text-right font-mono english-nums text-slate-600 dark:text-slate-400">{formatNumber(row.sales)}</div>
-                      </div>
-                    ))}
-                  </div>
+                  <h2 className="text-md font-bold text-slate-800 dark:text-slate-100 ml-4">رفع وتحديث البيانات</h2>
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 h-fit shadow-2xl transition-colors duration-500">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-blue-600/5 dark:bg-blue-600/10 rounded-sm text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                    <FileSpreadsheet size={20} />
+              <div className="flex justify-start">
+                <motion.div
+                  key="upload-box"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-4 text-center shadow-2xl transition-colors duration-500 w-full min-w-[320px] max-w-[450px]"
+                >
+                  <div className="w-16 h-16 bg-blue-600/5 dark:bg-blue-600/10 rounded-md flex items-center justify-center mx-auto mb-2 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                    <Upload size={28} />
                   </div>
-                  <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">بيانات {yearCurr}</h3>
-                </div>
-                <div className="overflow-auto max-h-[calc(100vh-450px)] custom-scrollbar rounded-md border border-slate-200 dark:border-slate-800/50 transition-colors">
-                  <div className="grid grid-cols-[50px_1fr_100px] gap-0 text-slate-500 text-sm border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-bold sticky top-0 z-10 transition-colors">
-                    <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800">م</div>
-                    <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">الفرع</div>
-                    <div className="p-3 text-right">المبيعات</div>
-                  </div>
-                  <div className="divide-y divide-slate-200 dark:divide-slate-800/50 bg-white dark:bg-slate-900/20">
-                    {filteredData2025.map((row, i) => (
-                      <div key={i} className="grid grid-cols-[50px_1fr_100px] gap-0 items-center text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/40 transition-colors">
-                        <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-950/10 font-mono english-nums text-slate-400 dark:text-slate-500">{i + 1}</div>
-                        <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 truncate">{row.branchName}</div>
-                        <div className="p-3 text-right font-mono english-nums text-slate-600 dark:text-slate-400">{formatNumber(row.sales)}</div>
+                  <h2 className="text-lg font-bold mb-1 text-slate-800 dark:text-slate-100">رفع وتحديث بيانات المبيعات</h2>
+                  <p className="text-slate-500 dark:text-slate-400 mb-4 leading-relaxed text-[10px]">
+                    تأكد من أن الملف يحتوي على ورقتين بأسماء سنوات متتالية (مثلاً 2024 و 2025). 
+                  </p>
+                  
+                  <div className="flex flex-col gap-3 mb-2">
+                    <div className="w-full">
+                      <select 
+                        value={selectedMonth} 
+                        onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm px-4 py-2.5 text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold text-xs"
+                      >
+                        {[
+                          'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 
+                          'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+                        ].map((m, i) => (
+                          <option key={i+1} value={i+1}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <label className="w-full relative group cursor-pointer block">
+                      <div className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-6 rounded-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20 text-xs">
+                        {isLoading ? 'جاري المعالجة...' : 'اختيار ملف الإكسل'}
+                        <Plus size={16} />
                       </div>
-                    ))}
+                      <input 
+                        type="file" 
+                        accept=".xlsx, .xls" 
+                        className="hidden" 
+                        onChange={handleFileUpload}
+                        disabled={isLoading}
+                      />
+                    </label>
                   </div>
-                </div>
+                  
+                  {fileName && (
+                    <div className="flex items-center justify-center gap-2 text-green-500 text-[13px] font-bold">
+                      <CheckCircle2 size={16} />
+                      <span>تم رفع: {fileName}</span>
+                    </div>
+                  )}
+                </motion.div>
               </div>
-            </motion.div>
+
+              {(data2024.length > 0 || data2025.length > 0) && (
+                <motion.div
+                  key="data-tables"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="grid md:grid-cols-2 gap-4"
+                >
+                  <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 h-fit shadow-2xl transition-colors duration-500">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 bg-indigo-600/5 dark:bg-indigo-600/10 rounded-sm text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                        <FileSpreadsheet size={20} />
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">بيانات {yearPrev}</h3>
+                    </div>
+                    <div className="overflow-auto max-h-[400px] custom-scrollbar rounded-md border border-slate-200 dark:border-slate-800/50">
+                      <div className="grid grid-cols-[50px_1fr_100px] gap-0 text-slate-500 text-xs border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-bold sticky top-0 z-10 transition-colors">
+                        <div className="p-2 text-center border-l border-slate-200 dark:border-slate-800">م</div>
+                        <div className="p-2 text-right border-l border-slate-200 dark:border-slate-800">الفرع</div>
+                        <div className="p-2 text-right">المبيعات</div>
+                      </div>
+                      <div className="divide-y divide-slate-200 dark:divide-slate-800/50 bg-white dark:bg-slate-900/20">
+                        {data2024.filter(r => r.branchName.toLowerCase().includes(searchTerm.toLowerCase())).map((row, i) => (
+                          <div key={i} className="grid grid-cols-[50px_1fr_100px] gap-0 items-center text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/40 transition-colors">
+                            <div className="p-2 text-center border-l border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-950/10 font-mono english-nums text-slate-400 dark:text-slate-500">{i + 1}</div>
+                            <div className="p-2 text-right border-l border-slate-200 dark:border-slate-800/50 truncate">{row.branchName}</div>
+                            <div className="p-2 text-right font-mono english-nums text-slate-600 dark:text-slate-400">{formatNumber(row.sales)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 h-fit shadow-2xl transition-colors duration-500">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 bg-blue-600/5 dark:bg-blue-600/10 rounded-sm text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                        <FileSpreadsheet size={20} />
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">بيانات {yearCurr}</h3>
+                    </div>
+                    <div className="overflow-auto max-h-[400px] custom-scrollbar rounded-md border border-slate-200 dark:border-slate-800/50">
+                      <div className="grid grid-cols-[50px_1fr_100px] gap-0 text-slate-500 text-xs border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-bold sticky top-0 z-10 transition-colors">
+                        <div className="p-2 text-center border-l border-slate-200 dark:border-slate-800">م</div>
+                        <div className="p-2 text-right border-l border-slate-200 dark:border-slate-800">الفرع</div>
+                        <div className="p-2 text-right">المبيعات</div>
+                      </div>
+                      <div className="divide-y divide-slate-200 dark:divide-slate-800/50 bg-white dark:bg-slate-900/20">
+                        {filteredData2025.map((row, i) => (
+                          <div key={i} className="grid grid-cols-[50px_1fr_100px] gap-0 items-center text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/40 transition-colors">
+                            <div className="p-2 text-center border-l border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-950/10 font-mono english-nums text-slate-400 dark:text-slate-500">{i + 1}</div>
+                            <div className="p-2 text-right border-l border-slate-200 dark:border-slate-800/50 truncate">{row.branchName}</div>
+                            <div className="p-2 text-right font-mono english-nums text-slate-600 dark:text-slate-400">{formatNumber(row.sales)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </div>
           )}
 
           {activeTab === 'results' && (
@@ -976,35 +1408,91 @@ export default function CommissionsPage() {
               animate={{ opacity: 1, y: 0 }}
               className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-4 overflow-hidden shadow-2xl transition-colors duration-500"
             >
-              <div className="flex items-center gap-6 mb-2 w-fit">
-                <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">تقرير العمولات المحتسبة</h3>
-                <button 
-                  onClick={handleExportAndArchive}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-md transition-all shadow-lg shadow-blue-900/20 font-bold"
-                >
-                  <Download size={18} />
-                  تصدير النتائج والأرشفة
-                </button>
+              <div className="flex flex-col sm:flex-row justify-start items-start sm:items-center gap-4 mb-4 transition-colors duration-500">
+                <div className="flex items-center gap-3 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 pl-4 rounded-full shadow-sm w-fit">
+                  <button onClick={() => navigateTo('dashboard')} title="العودة للوحة البيانات" className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors">
+                    <ArrowRight size={18} />
+                  </button>
+                  <div className="p-2 bg-blue-600/10 rounded-full text-blue-600 dark:text-blue-400">
+                    <Calculator size={20} />
+                  </div>
+                  <h2 className="text-md font-bold text-slate-800 dark:text-slate-100 ml-4">تقرير العمولات المحتسبة</h2>
+                  
+                  <div className="flex items-center gap-2 pr-4 border-r border-slate-200 dark:border-slate-800">
+                    {(activeFilterType !== 'all' || searchTerm) && (
+                      <div className="flex items-center gap-2 bg-blue-600/10 dark:bg-blue-400/10 px-3 py-1 rounded-full text-[10px] font-bold text-blue-600 dark:text-blue-400 animate-in fade-in zoom-in duration-300">
+                        <span>{
+                          activeFilterType === 'new' ? `الفروع الجديدة ${searchTerm ? `(${searchTerm})` : ''}` : 
+                          activeFilterType === 'partial' ? `افتتاح جزئي ${searchTerm ? `(${searchTerm})` : ''}` :
+                          activeFilterType === 'no-sales' ? 'بيانات مفقودة' :
+                          activeFilterType === 'zero-sales' ? 'مبيعات صفر' :
+                          activeFilterType === 'supervisor' ? searchTerm : 
+                          activeFilterType === 'branch' ? searchTerm :
+                          searchTerm ? `بحث: ${searchTerm}` : ''
+                        }</span>
+                        <button onClick={() => { setActiveFilterType('all'); setSearchTerm(''); }} className="hover:text-blue-800 dark:hover:text-blue-200">
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )}
+                    <div className="relative flex items-center">
+                      <Search className="absolute right-2 text-slate-400" size={14} />
+                      <input 
+                        type="text" 
+                        placeholder="بحث..." 
+                        value={searchTerm}
+                        onChange={(e) => {
+                          setSearchTerm(e.target.value);
+                          if (activeFilterType === 'supervisor') setActiveFilterType('all');
+                        }}
+                        className="bg-slate-50 dark:bg-slate-800/50 border-none rounded-full pr-8 pl-8 py-1 text-xs w-32 focus:w-48 transition-all focus:ring-1 focus:ring-blue-500/30"
+                      />
+                      {searchTerm && (
+                        <button onClick={() => setSearchTerm('')} className="absolute left-2 text-slate-400 hover:text-slate-600">
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                    <button 
+                      title="تصدير النتائج"
+                      onClick={handleExportAndArchive}
+                      className="p-2 hover:bg-blue-600/10 rounded-full text-blue-600 transition-colors"
+                    >
+                      <Download size={18} />
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
-                <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-3 rounded-md transition-colors">
+              <div className="flex flex-col sm:flex-row gap-3 mb-4 max-w-4xl">
+                <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-3 rounded-md transition-colors flex-1">
                   <p className="text-xs text-slate-500 uppercase font-bold mb-2">إجمالي مبيعات {yearPrev}</p>
-                  <p className="text-3xl font-black text-slate-800 dark:text-white english-nums">{formatNumber(resultsTotals.sales2024)}</p>
+                  <p className="text-2xl font-black text-slate-800 dark:text-white english-nums">{formatNumber(resultsTotals.sales2024)}</p>
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-3 rounded-md transition-colors border-l-4 border-l-blue-500/50">
+                <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-3 rounded-md transition-colors border-r-4 border-r-blue-500/50 flex-1">
                   <p className="text-xs text-slate-500 uppercase font-bold mb-2">إجمالي مبيعات {yearCurr}</p>
-                  <p className="text-3xl font-black text-slate-800 dark:text-white english-nums">{formatNumber(resultsTotals.sales2025)}</p>
+                  <p className="text-2xl font-black text-slate-800 dark:text-white english-nums">{formatNumber(resultsTotals.sales2025)}</p>
                 </div>
-                <div className="bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-md transition-colors border-l-4 border-l-emerald-500">
+                <div className="bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-md transition-colors border-r-4 border-r-emerald-500 flex-1">
                   <p className="text-xs text-emerald-600 dark:text-emerald-400 uppercase font-bold mb-2">إجمالي العمولات</p>
-                  <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 english-nums">{formatNumber(resultsTotals.commission, 2)}</p>
+                  <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 english-nums">{formatNumber(resultsTotals.commission, 2)}</p>
                 </div>
+                {searchTerm && dbSupervisors.some(s => s.name.toLowerCase().includes(searchTerm.toLowerCase())) && (
+                  <div className="bg-[#800000]/5 dark:bg-[#800000]/10 border border-[#800000]/20 p-3 rounded-md transition-colors border-r-4 border-r-[#800000] flex-[1.5] flex justify-between items-center">
+                    <div>
+                      <p className="text-xs text-[#800000] dark:text-rose-400 uppercase font-bold mb-2">عمولة المشرف (للفلتر)</p>
+                      <p className="text-2xl font-black text-[#800000] dark:text-rose-400 english-nums">{formatNumber(filteredResults.reduce((acc, row) => acc + row.supervisorCommission10, 0), 2)}</p>
+                    </div>
+                    <button onClick={() => window.print()} className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md text-slate-600 dark:text-slate-300 hover:text-blue-600 transition-colors shadow-sm" title="طباعة التقرير">
+                      <Printer size={20} />
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="overflow-auto max-h-[calc(100vh-350px)] custom-scrollbar rounded-sm border border-slate-200 dark:border-slate-800/50 transition-colors">
                 <div className="min-w-[1400px]">
-                  <div className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 text-sm text-slate-500 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-950 sticky top-0 z-10 transition-colors">
+                  <div className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 text-[13px] text-slate-500 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-950 sticky top-0 z-10 transition-colors">
                     <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800">م</div>
                     {[
                       { key: 'branchName', label: 'اسم الفرع' },
@@ -1033,7 +1521,7 @@ export default function CommissionsPage() {
                   
                   <div className="divide-y divide-slate-200 dark:divide-slate-800/30">
                     {filteredResults.map((row, idx) => (
-                      <div key={idx} className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 items-center text-[15px] text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-all group border-b border-slate-200 dark:border-slate-800/20">
+                      <div key={idx} className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 items-center text-[13px] text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-all group border-b border-slate-200 dark:border-slate-800/20">
                         <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-950/10 font-mono english-nums text-slate-400 dark:text-slate-500">{idx + 1}</div>
                         <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-bold text-slate-900 dark:text-slate-100 truncate flex items-center gap-2">
                           <span className="truncate">{row.branchName}</span>
@@ -1088,78 +1576,153 @@ export default function CommissionsPage() {
               animate={{ opacity: 1, x: 0 }}
               className="space-y-6"
             >
-              {!selectedArchive ? (
-                <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 shadow-2xl transition-colors duration-500">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 bg-blue-600/5 dark:bg-blue-600/10 rounded-sm text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                      <History size={24} />
-                    </div>
-                    <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">سجل الأرشيف</h3>
+              <div className="flex flex-col sm:flex-row justify-start items-start sm:items-center gap-4 mb-4 transition-colors duration-500">
+                <div className="flex items-center gap-3 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 pl-4 rounded-full shadow-sm w-fit">
+                  <button onClick={() => navigateTo('dashboard')} title="العودة للوحة البيانات" className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors">
+                    <ArrowRight size={18} />
+                  </button>
+                  <div className="p-2 bg-blue-600/10 rounded-full text-blue-600 dark:text-blue-400">
+                    <Archive size={20} />
                   </div>
+                  <h2 className="text-md font-bold text-slate-800 dark:text-slate-100 ml-4">الأرشيف</h2>
+                  
+                  <div className="flex items-center gap-2 pr-4 border-r border-slate-200 dark:border-slate-800">
+                    <div className="relative flex items-center">
+                      <Search className="absolute right-2 text-slate-400" size={14} />
+                      <input 
+                        type="text" 
+                        placeholder="بحث بالأرشيف..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="bg-slate-50 dark:bg-slate-800/50 border-none rounded-full pr-8 pl-8 py-1 text-xs w-32 focus:w-48 transition-all focus:ring-1 focus:ring-blue-500/30"
+                      />
+                      {searchTerm && (
+                        <button onClick={() => setSearchTerm('')} className="absolute left-2 text-slate-400 hover:text-slate-600">
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              { !selectedArchive ? (
+                <div className="flex justify-start w-full overflow-hidden">
+                  <div className="flex flex-col lg:flex-row gap-6">
+                    {/* Exported Results Section */}
+                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-4 shadow-xl transition-colors duration-500 w-full min-w-[320px] max-w-[450px]">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 bg-blue-600/5 dark:bg-blue-600/10 rounded-sm text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                          <History size={20} />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">النتائج المصدرة</h3>
+                      </div>
+                      <div className="grid gap-2">
+                        {archives.filter(a => !a.filename.startsWith('[رفع ملف]')).length > 0 ? (
+                          archives.filter(a => !a.filename.startsWith('[رفع ملف]')).map((arc) => (
+                            <div 
+                              key={arc.id}
+                              className="bg-white dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-4 rounded-sm flex items-center justify-between hover:border-blue-500/30 transition-all cursor-pointer group shadow-sm overflow-hidden min-w-0"
+                              onClick={() => viewArchiveDetails(arc.id)}
+                            >
+                              <div className="flex items-center gap-4 min-w-0 flex-1">
+                                <div className="w-12 h-12 flex-shrink-0 bg-blue-600/5 text-blue-600 dark:bg-slate-900 rounded-md flex items-center justify-center group-hover:scale-110 transition-transform border border-slate-100 dark:border-transparent">
+                                  <FileSpreadsheet size={24} />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <h4 className="font-bold text-slate-800 dark:text-slate-200 truncate" title={arc.filename}>{arc.filename}</h4>
+                                  <p className="text-xs text-slate-400 dark:text-slate-500">{new Date(arc.created_at).toLocaleString('ar-EG')}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-6">
+                                <div className="text-right">
+                                  <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">إجمالي العمولات</p>
+                                  <p className="font-mono font-bold text-emerald-600 dark:text-emerald-400 english-nums">{formatNumber(arc.total_commission, 2)}</p>
+                                </div>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteArchive(arc.id);
+                                  }}
+                                  className="p-3 hover:bg-rose-500/10 rounded-sm text-slate-400 dark:text-slate-500 hover:text-rose-500 border border-transparent hover:border-rose-500/20 transition-all"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="py-10 text-center text-slate-500 text-sm italic">لا توجد نتائج مصدرة</div>
+                        )}
+                      </div>
+                    </div>
 
-                  <div className="grid gap-2">
-                    {archives.length > 0 ? archives.map((arc) => (
-                      <div 
-                        key={arc.id}
-                        className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 p-4 rounded-sm flex items-center justify-between hover:border-blue-500/30 transition-all cursor-pointer group"
-                        onClick={() => viewArchiveDetails(arc.id)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-md flex items-center justify-center text-slate-400 dark:text-slate-500 group-hover:text-blue-500 transition-colors border border-slate-100 dark:border-transparent">
-                            <FileSpreadsheet size={24} />
-                          </div>
-                          <div>
-                            <h4 className="font-bold text-slate-800 dark:text-slate-200">{arc.filename}</h4>
-                            <p className="text-xs text-slate-400 dark:text-slate-500">{new Date(arc.created_at).toLocaleString('ar-EG')}</p>
-                          </div>
+                    {/* Uploaded Files Section */}
+                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-4 shadow-xl transition-colors duration-500 w-full min-w-[320px] max-w-[450px]">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 bg-amber-500/5 dark:bg-amber-500/10 rounded-sm text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                          <Upload size={20} />
                         </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-right">
-                            <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">إجمالي العمولات</p>
-                            <p className="font-mono font-bold text-emerald-600 dark:text-emerald-400 english-nums">{formatNumber(arc.total_commission, 2)}</p>
-                          </div>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteArchive(arc.id);
-                            }}
-                            className="p-3 hover:bg-rose-500/10 rounded-sm text-slate-400 dark:text-slate-500 hover:text-rose-500 border border-transparent hover:border-rose-500/20 transition-all"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
+                        <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">الملفات المرفوعة</h3>
                       </div>
-                    )) : (
-                      <div className="py-20 text-center text-slate-600">
-                        <Archive size={48} className="mx-auto mb-2 opacity-20" />
-                        <p>لا توجد ملفات مؤرشفة حالياً</p>
+                      <div className="grid gap-2">
+                        {archives.filter(a => a.filename.startsWith('[رفع ملف]')).length > 0 ? (
+                          archives.filter(a => a.filename.startsWith('[رفع ملف]')).map((arc) => (
+                            <div 
+                              key={arc.id}
+                              className="bg-white dark:bg-slate-950/40 border border-amber-500/10 hover:border-amber-500/30 p-4 rounded-sm flex items-center justify-between transition-all cursor-pointer group shadow-sm overflow-hidden min-w-0"
+                              onClick={() => viewArchiveDetails(arc.id)}
+                            >
+                              <div className="flex items-center gap-4 min-w-0 flex-1">
+                                <div className="w-12 h-12 flex-shrink-0 bg-amber-500/5 text-amber-600 dark:bg-slate-900 rounded-md flex items-center justify-center group-hover:scale-110 transition-transform border border-amber-100/50 dark:border-transparent">
+                                  <Upload size={24} />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <h4 className="font-bold text-slate-800 dark:text-slate-200 truncate" title={arc.filename}>{arc.filename}</h4>
+                                  <p className="text-xs text-slate-400 dark:text-slate-500">{new Date(arc.created_at).toLocaleString('ar-EG')}</p>
+                                </div>
+                              </div>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteArchive(arc.id);
+                                }}
+                                className="p-3 hover:bg-rose-500/10 rounded-sm text-slate-400 dark:text-slate-500 hover:text-rose-500 border border-transparent hover:border-rose-500/20 transition-all"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="py-10 text-center text-slate-500 text-sm italic">لا توجد ملفات مرفوعة</div>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-6">
-                  <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 shadow-2xl flex items-center gap-6 transition-colors duration-500 w-fit">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row justify-start items-start sm:items-center gap-4 mb-4 transition-colors duration-500">
+                    <div className="flex items-center gap-3 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 pl-4 rounded-full shadow-sm w-fit">
                       <button 
                         onClick={() => setSelectedArchive(null)}
-                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 transition-colors"
+                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors"
                       >
                         <X size={20} />
                       </button>
-                      <div>
-                        <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">{selectedArchive.filename}</h3>
-                        <p className="text-xs text-slate-400 dark:text-slate-500">بتاريخ {new Date(selectedArchive.created_at).toLocaleString('ar-EG')}</p>
+                      <div className="pr-2 border-r border-slate-200 dark:border-slate-800 min-w-0 flex-1">
+                        <h3 className="text-lg font-extrabold text-slate-800 dark:text-slate-100 truncate max-w-[200px] md:max-w-[400px]" title={selectedArchive.filename}>{selectedArchive.filename}</h3>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500">بتاريخ {new Date(selectedArchive.created_at).toLocaleString('ar-EG')}</p>
                       </div>
-                    </div>
-                    <div className="flex gap-4 text-right">
-                      <div>
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">إجمالي الفروع</p>
-                        <p className="font-mono font-bold text-emerald-600 dark:text-emerald-400 english-nums">{formatNumber(selectedArchive.total_commission, 2)}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase">إجمالي المشرفين</p>
-                        <p className="font-mono font-bold text-blue-600 dark:text-blue-400 english-nums">{formatNumber(selectedArchive.total_supervisors_commission, 2)}</p>
+                      
+                      <div className="flex gap-6 pr-4 mr-2 border-r border-slate-200 dark:border-slate-800">
+                        <div>
+                          <p className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold mb-1">إجمالي الفروع</p>
+                          <p className="font-mono font-bold text-emerald-600 dark:text-emerald-400 english-nums text-sm">{formatNumber(selectedArchive.total_commission, 2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold mb-1">إجمالي المشرفين</p>
+                          <p className="font-mono font-bold text-blue-600 dark:text-blue-400 english-nums text-sm">{formatNumber(selectedArchive.total_supervisors_commission, 2)}</p>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1167,7 +1730,7 @@ export default function CommissionsPage() {
                   <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md p-3 shadow-2xl overflow-hidden transition-colors duration-500">
                     <div className="overflow-auto max-h-[calc(100vh-400px)] custom-scrollbar rounded-md border border-slate-200 dark:border-slate-800/50">
                       <div className="min-w-[1400px]">
-                        <div className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 text-sm text-slate-400 dark:text-slate-500 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-950 sticky top-0 z-10 transition-colors">
+                        <div className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 text-[13px] text-slate-400 dark:text-slate-500 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-950 sticky top-0 z-10 transition-colors">
                           <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800">م</div>
                           <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">الفرع</div>
                           <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">{yearPrev}</div>
@@ -1210,25 +1773,52 @@ export default function CommissionsPage() {
               animate={{ opacity: 1 }}
               className="space-y-6"
             >
-              <div className="flex items-center gap-6 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-4 rounded-sm mb-2 shadow-xl transition-colors duration-500 w-fit">
-                <div>
-                  <h3 className="text-xl font-bold mb-0.5 text-slate-800 dark:text-slate-100">إدارة الفروع والربط</h3>
-                  <p className="text-xs text-slate-400 dark:text-slate-400">إضافة الفروع وربطها بالمشرفين المخصصين</p>
-                </div>
-                <div className="flex gap-3">
-                  <button 
-                    onClick={() => {
-                      setEditingBranch(null);
-                      setModalBranchName('');
-                      setModalBranchSupervisors([]);
-                      setIsBranchModalOpen(true);
-                      setSearchTerm('');
-                    }}
-                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-all shadow-lg shadow-blue-900/40 text-sm font-bold"
-                  >
-                    <Plus size={18} />
-                    إضافة فرع جديد
+              <div className="flex flex-col sm:flex-row justify-start items-start sm:items-center gap-4 mb-4 transition-colors duration-500">
+                <div className="flex items-center gap-3 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 pl-4 rounded-full shadow-sm w-fit">
+                  <button onClick={() => navigateTo('dashboard')} title="العودة للوحة البيانات" className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors">
+                    <ArrowRight size={18} />
                   </button>
+                  <div className="p-2 bg-blue-600/10 rounded-full text-blue-600 dark:text-blue-400">
+                    <FileSpreadsheet size={20} />
+                  </div>
+                  <h2 className="text-md font-bold text-slate-800 dark:text-slate-100 ml-4">إدارة الفروع</h2>
+                  
+                  <div className="flex items-center gap-2 pr-4 border-r border-slate-200 dark:border-slate-800">
+                    {(activeFilterType !== 'all' || searchTerm) && (
+                      <div className="flex items-center gap-2 bg-blue-600/10 dark:bg-blue-400/10 px-3 py-1 rounded-full text-[10px] font-bold text-blue-600 dark:text-blue-400 animate-in fade-in zoom-in duration-300">
+                        <span>{
+                          activeFilterType === 'no-supervisor' ? 'فروع بلا مشرفين' : 
+                          searchTerm ? `بحث: ${searchTerm}` : ''
+                        }</span>
+                        <button onClick={() => { setActiveFilterType('all'); setSearchTerm(''); }} className="hover:text-blue-800 dark:hover:text-blue-200">
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )}
+                    <div className="relative flex items-center">
+                      <Search className="absolute right-2 text-slate-400" size={14} />
+                      <input 
+                        type="text" 
+                        placeholder="بحث..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="bg-slate-50 dark:bg-slate-800/50 border-none rounded-full pr-8 pl-8 py-1 text-xs w-32 focus:w-48 transition-all focus:ring-1 focus:ring-blue-500/30"
+                      />
+                    </div>
+                    <button 
+                      title="إضافة فرع"
+                      onClick={() => {
+                        setEditingBranch(null);
+                        setModalBranchName('');
+                        setModalBranchSupervisors([]);
+                        setIsBranchModalOpen(true);
+                        setSearchTerm('');
+                      }}
+                      className="p-2 hover:bg-blue-600/10 rounded-full text-blue-600 transition-colors"
+                    >
+                      <Plus size={18} />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1307,31 +1897,47 @@ export default function CommissionsPage() {
               animate={{ opacity: 1 }}
               className="space-y-6"
             >
-              <div className="flex items-center gap-3 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-4 pr-6 rounded-sm mb-2 shadow-xl transition-colors duration-500 w-fit">
-                <div className="flex-shrink-0">
-                  <h3 className="text-xl font-bold mb-0.5 text-slate-800 dark:text-slate-100">إدارة المشرفين</h3>
-                  <p className="text-xs text-slate-400 dark:text-slate-400">إدارة قائمة المشرفين في النظام</p>
-                </div>
-                <div className="flex gap-3">
-                  <button 
-                    onClick={() => {
-                      setEditingSupervisor(null);
-                      setModalSupervisorName('');
-                      setIsSupervisorModalOpen(true);
-                      setSearchTerm('');
-                    }}
-                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-all shadow-lg shadow-blue-900/40 text-sm font-bold"
-                  >
-                    <Plus size={18} />
-                    إضافة مشرف
+              <div className="flex flex-col sm:flex-row justify-start items-start sm:items-center gap-4 mb-4 transition-colors duration-500">
+                <div className="flex items-center gap-3 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 pl-4 rounded-full shadow-sm w-fit">
+                  <button onClick={() => navigateTo('dashboard')} title="العودة للوحة البيانات" className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors">
+                    <ArrowRight size={18} />
                   </button>
-                  <button 
-                    onClick={handlePrintSupervisors}
-                    className="bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-md flex items-center gap-2 transition-all border border-slate-200 dark:border-slate-700 shadow-sm text-sm font-bold"
-                  >
-                    <Printer size={18} />
-                    طباعة التقرير
-                  </button>
+                  <div className="p-2 bg-blue-600/10 rounded-full text-blue-600 dark:text-blue-400">
+                    <Users size={20} />
+                  </div>
+                  <h2 className="text-md font-bold text-slate-800 dark:text-slate-100 ml-4">إدارة المشرفين</h2>
+                  
+                  <div className="flex items-center gap-2 pr-4 border-r border-slate-200 dark:border-slate-800">
+                    <div className="relative flex items-center">
+                      <Search className="absolute right-2 text-slate-400" size={14} />
+                      <input 
+                        type="text" 
+                        placeholder="بحث..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="bg-slate-50 dark:bg-slate-900 border-none rounded-full pr-8 pl-8 py-1 text-xs w-32 focus:w-48 transition-all focus:ring-1 focus:ring-blue-500/30"
+                      />
+                    </div>
+                    <button 
+                      title="طباعة تقرير"
+                      onClick={handlePrintSupervisors}
+                      className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors"
+                    >
+                      <Printer size={18} />
+                    </button>
+                    <button 
+                      title="إضافة مشرف"
+                      onClick={() => {
+                        setEditingSupervisor(null);
+                        setModalSupervisorName('');
+                        setIsSupervisorModalOpen(true);
+                        setSearchTerm('');
+                      }}
+                      className="p-2 hover:bg-blue-600/10 rounded-full text-blue-600 transition-colors"
+                    >
+                      <Plus size={18} />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1465,14 +2071,7 @@ export default function CommissionsPage() {
                 </div>
               </div>
               <div className="p-5 bg-slate-50 dark:bg-slate-800/20 border-t border-slate-200 dark:border-slate-800 flex gap-3">
-                <button onClick={() => {
-                  setModalBranchName('');
-                  setModalBranchOpeningDay('');
-                  setModalBranchOpeningMonth('');
-                  setModalBranchSupervisors([]);
-                  setEditingBranch(null);
-                  handleSaveBranch();
-                }} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-blue-900/20">حفظ</button>
+                <button onClick={handleSaveBranch} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-blue-900/20">حفظ</button>
                 <button onClick={() => setIsBranchModalOpen(false)} className="px-6 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300 rounded-xl text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">إلغاء</button>
               </div>
             </motion.div>

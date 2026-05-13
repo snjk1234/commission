@@ -1,19 +1,12 @@
-@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@200;300;400;500;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Changa:wght@200;300;400;500;600;700;800&display=swap');
 @import 'tailwindcss';
 @import './utils.css';
 @import 'tw-animate-css';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-@utility container {
-  margin-inline: auto;
-  padding-inline: 2rem;
-  @media (width >= 1400px) {
-    max-width: 1400px;
-  }
-}
-
 @theme inline {
+  --font-family-changa: 'Changa', sans-serif;
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-background: var(--background);
@@ -196,6 +189,6 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Tajawal', sans-serif;
+    font-family: 'Cairo', sans-serif;
   }
 }
