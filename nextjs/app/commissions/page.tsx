@@ -155,7 +155,7 @@ export default function CommissionsPage() {
   }, [dbSupervisors]);
 
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
-  const [isSidebarPinned, setIsSidebarPinned] = useState(false);
+  const [isSidebarPinned, setIsSidebarPinned] = useState(true);
 
   const requestSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -461,6 +461,47 @@ export default function CommissionsPage() {
     printWindow.document.close();
   };
 
+  const syncNewBranches = async (extractedNames: string[]) => {
+    try {
+      // Fetch latest branches from DB to avoid stale state and unique constraint errors
+      const { data: latestBranches, error: fetchError } = await supabase
+        .from('commission_branches')
+        .select('name');
+      
+      if (fetchError) throw fetchError;
+
+      const branchesToMatch = latestBranches || [];
+      const existingNormalized = new Set(branchesToMatch.map(b => normalizeArabic(b.name || '')));
+      const newBranchesToInsert: { name: string }[] = [];
+      const addedNormalized = new Set<string>();
+
+      extractedNames.forEach(name => {
+        const norm = normalizeArabic(name);
+        if (norm && !existingNormalized.has(norm) && !addedNormalized.has(norm)) {
+          newBranchesToInsert.push({ 
+            name: name,
+            normalized_name: norm 
+          });
+          addedNormalized.add(norm);
+        }
+      });
+
+      if (newBranchesToInsert.length > 0) {
+        const { data, error } = await supabase
+          .from('commission_branches')
+          .insert(newBranchesToInsert)
+          .select();
+        
+        if (error) throw error;
+        if (data) {
+          setDbBranches(prev => [...prev, ...data].sort((a, b) => a.name.localeCompare(b.name, 'ar')));
+        }
+      }
+    } catch (err: any) {
+      console.error('Error syncing new branches:', err.message || err);
+    }
+  };
+
   const fetchData = async () => {
     setIsDbLoading(true);
     try {
@@ -544,6 +585,13 @@ export default function CommissionsPage() {
 
         setData2024(cleanPrev);
         setData2025(cleanCurr);
+        
+        // Sync new branches found in the file
+        const allExtractedNames = Array.from(new Set([
+          ...cleanPrev.map(b => b.branchName),
+          ...cleanCurr.map(b => b.branchName)
+        ]));
+        await syncNewBranches(allExtractedNames);
         
         // Calculate logic
         performCalculations(cleanPrev, cleanCurr);
