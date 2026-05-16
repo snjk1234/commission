@@ -204,18 +204,23 @@ export default function CommissionsPage() {
       setSelectedArchive(archive);
       setArchiveDetails(items || []);
       
-      // Treat archived data as current data for all tabs
       if (items && items.length > 0) {
-        const reconstructed2024 = items.map(item => ({
-          branchName: item.branch_name,
-          normalizedName: normalizeArabic(item.branch_name),
-          sales: item.sales_2024
-        }));
-        const reconstructed2025 = items.map(item => ({
-          branchName: item.branch_name,
-          normalizedName: normalizeArabic(item.branch_name),
-          sales: item.sales_2025
-        }));
+        const reconstructed2024 = items.map(item => {
+          const cleanName = item.branch_name.replace(' (جديد)', '').replace(' (افتتاح جزئي)', '');
+          return {
+            branchName: cleanName,
+            normalizedName: normalizeArabic(cleanName),
+            sales: item.sales_2024
+          };
+        });
+        const reconstructed2025 = items.map(item => {
+          const cleanName = item.branch_name.replace(' (جديد)', '').replace(' (افتتاح جزئي)', '');
+          return {
+            branchName: cleanName,
+            normalizedName: normalizeArabic(cleanName),
+            sales: item.sales_2025
+          };
+        });
         
         setData2024(reconstructed2024);
         setData2025(reconstructed2025);
@@ -363,17 +368,23 @@ export default function CommissionsPage() {
 
       if (archiveError) throw archiveError;
 
-      const archiveItems = filteredResults.map(row => ({
-        archive_id: archive.id,
-        branch_name: row.branchName,
-        sales_2024: row.sales2024,
-        sales_2025: row.sales2025,
-        growth: row.growth,
-        rate: row.rate,
-        commission: row.commission,
-        supervisor_names: row.supervisorNames,
-        supervisor_commission: row.supervisorCommission10
-      }));
+      const archiveItems = filteredResults.map(row => {
+        let nameSuffix = '';
+        if (row.isNew) nameSuffix = ' (جديد)';
+        else if (row.isSplit) nameSuffix = ' (افتتاح جزئي)';
+        
+        return {
+          archive_id: archive.id,
+          branch_name: row.branchName + nameSuffix,
+          sales_2024: row.sales2024,
+          sales_2025: row.sales2025,
+          growth: row.growth,
+          rate: row.rate,
+          commission: row.commission,
+          supervisor_names: row.supervisorNames,
+          supervisor_commission: row.supervisorCommission10
+        };
+      });
 
       const { error: itemsError } = await supabase
         .from('commission_archive_items')
@@ -446,6 +457,200 @@ export default function CommissionsPage() {
           </table>
           <div class="footer">
             <p>تم استخراج هذا التقرير من نظام إدارة العمولات</p>
+          </div>
+          <script>
+            window.onload = () => {
+              setTimeout(() => {
+                window.print();
+                window.close();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const handlePrintResults = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const tableContent = filteredResults.map((row, idx) => `
+      <tr>
+        <td style="text-align: center;">${idx + 1}</td>
+        <td style="text-align: right; font-weight: bold;">
+          ${row.branchName}
+          ${row.isNew ? '<span style="font-size: 9px; color: #16a34a;"> (جديد)</span>' : ''}
+          ${row.isSplit ? '<span style="font-size: 9px; color: #ea580c;"> (جزئي)</span>' : ''}
+        </td>
+        <td style="text-align: center; direction: ltr;">${formatNumber(row.sales2024)}</td>
+        <td style="text-align: center; direction: ltr;">${formatNumber(row.sales2025)}</td>
+        <td style="text-align: center; direction: ltr; color: ${row.difference >= 0 ? '#16a34a' : '#e11d48'};">${formatNumber(row.difference)}</td>
+        <td style="text-align: center; direction: ltr; color: #2563eb; font-weight: bold;">${formatNumber(row.growth, 2)}%</td>
+        <td style="text-align: center; direction: ltr; font-weight: bold; color: #d97706;">${formatNumber(row.rate * 100, 1)}%</td>
+        <td style="text-align: center; direction: ltr; font-weight: bold;">${formatNumber(row.commission, 2)}</td>
+        <td style="text-align: right;">${row.supervisorNames}</td>
+        <td style="text-align: center; direction: ltr; font-weight: bold;">${formatNumber(row.supervisorCommission10, 2)}</td>
+      </tr>
+    `).join('');
+
+    const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+    const monthName = monthNames[selectedMonth - 1] || selectedMonth;
+    
+    let supervisorName = 'الكل';
+    if (activeFilterType === 'supervisor' && searchTerm) {
+      supervisorName = searchTerm;
+    } else if (searchTerm && dbSupervisors.some(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()))) {
+      supervisorName = searchTerm;
+    } else if (searchTerm) {
+      supervisorName = 'بحث: ' + searchTerm;
+    } else if (activeFilterType === 'new') {
+      supervisorName = 'الفروع الجديدة';
+    } else if (activeFilterType === 'partial') {
+      supervisorName = 'افتتاح جزئي';
+    }
+
+    const totalCommission = filteredResults.reduce((sum, r) => sum + r.commission, 0);
+    const totalSupCommission = filteredResults.reduce((sum, r) => sum + r.supervisorCommission10, 0);
+
+    printWindow.document.write(`
+      <html dir="rtl">
+        <head>
+          <title>تقرير العمولات</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+            @page { margin: 0.5cm; }
+            body { font-family: 'Tajawal', sans-serif; padding: 0; color: #333; font-size: 10px; line-height: 1.2; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10px; }
+            th { background-color: #f8fafc; padding: 4px; border: 1px solid #ddd; text-align: center; font-size: 11px; }
+            td { padding: 2px 4px; border: 1px solid #ddd; }
+            .header { text-align: center; margin-bottom: 15px; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; }
+            .header h1 { font-size: 18px; color: #1e293b; margin: 0 0 5px 0; }
+            .footer { margin-top: 20px; text-align: left; font-size: 10px; color: #666; }
+            .total-row td { background-color: #f1f5f9; font-weight: bold; padding: 6px 4px; }
+            @media print { .no-print { display: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>تقرير عمولات فروع (${supervisorName}) لشهر (${monthName} ${yearCurr})</h1>
+            <p style="margin: 5px 0 0 0; color: #64748b;">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-EG')}</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 30px;">م</th>
+                <th>اسم الفرع</th>
+                <th>مبيعات ${yearPrev}</th>
+                <th>مبيعات ${yearCurr}</th>
+                <th>الفارق</th>
+                <th>النمو %</th>
+                <th>العمولة %</th>
+                <th>القيمة</th>
+                <th>المشرف</th>
+                <th>عمولة المشرف</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableContent}
+              <tr class="total-row">
+                <td colspan="7" style="text-align: left;">الإجمالي الكلي</td>
+                <td style="text-align: center; direction: ltr;">${formatNumber(totalCommission, 2)}</td>
+                <td></td>
+                <td style="text-align: center; direction: ltr;">${formatNumber(totalSupCommission, 2)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="footer">
+            <p>تم استخراج هذا التقرير من نظام إدارة العمولات</p>
+          </div>
+          <script>
+            window.onload = () => {
+              setTimeout(() => {
+                window.print();
+                window.close();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const handlePrintArchive = () => {
+    if (!selectedArchive) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const tableContent = archiveDetails.map((row, idx) => `
+      <tr>
+        <td style="text-align: center;">${idx + 1}</td>
+        <td style="text-align: right; font-weight: bold;">
+          ${row.branch_name}
+        </td>
+        <td style="text-align: center; direction: ltr;">${formatNumber(row.sales_2024)}</td>
+        <td style="text-align: center; direction: ltr;">${formatNumber(row.sales_2025)}</td>
+        <td style="text-align: center; direction: ltr; color: ${row.sales_2025 - row.sales_2024 >= 0 ? '#16a34a' : '#e11d48'};">${formatNumber(row.sales_2025 - row.sales_2024)}</td>
+        <td style="text-align: center; direction: ltr; color: #2563eb; font-weight: bold;">${formatNumber(row.growth, 2)}%</td>
+        <td style="text-align: center; direction: ltr; font-weight: bold; color: #d97706;">${formatNumber(row.rate * 100, 1)}%</td>
+        <td style="text-align: center; direction: ltr; font-weight: bold;">${formatNumber(row.commission, 2)}</td>
+        <td style="text-align: right;">${row.supervisor_names}</td>
+        <td style="text-align: center; direction: ltr; font-weight: bold;">${formatNumber(row.supervisor_commission, 2)}</td>
+      </tr>
+    `).join('');
+
+    printWindow.document.write(`
+      <html dir="rtl">
+        <head>
+          <title>طباعة الأرشيف - ${selectedArchive.filename}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+            @page { margin: 0.5cm; }
+            body { font-family: 'Tajawal', sans-serif; padding: 0; color: #333; font-size: 10px; line-height: 1.2; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10px; }
+            th { background-color: #f8fafc; padding: 4px; border: 1px solid #ddd; text-align: center; font-size: 11px; }
+            td { padding: 2px 4px; border: 1px solid #ddd; }
+            .header { text-align: center; margin-bottom: 15px; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; }
+            .header h1 { font-size: 18px; color: #1e293b; margin: 0 0 5px 0; }
+            .footer { margin-top: 20px; text-align: left; font-size: 10px; color: #666; }
+            .total-row td { background-color: #f1f5f9; font-weight: bold; padding: 6px 4px; }
+            @media print { .no-print { display: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>أرشيف العمولات: ${selectedArchive.filename.replace('[رفع ملف] ', '')}</h1>
+            <p style="margin: 5px 0 0 0; color: #64748b;">تاريخ الحفظ: ${new Date(selectedArchive.created_at).toLocaleString('ar-EG')} | تاريخ الطباعة: ${new Date().toLocaleDateString('ar-EG')}</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 30px;">م</th>
+                <th>اسم الفرع</th>
+                <th>مبيعات ${yearPrev}</th>
+                <th>مبيعات ${yearCurr}</th>
+                <th>الفارق</th>
+                <th>النمو %</th>
+                <th>العمولة %</th>
+                <th>القيمة</th>
+                <th>المشرف</th>
+                <th>عمولة المشرف</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableContent}
+              <tr class="total-row">
+                <td colspan="7" style="text-align: left;">الإجمالي الكلي</td>
+                <td style="text-align: center; direction: ltr;">${formatNumber(selectedArchive.total_commission, 2)}</td>
+                <td></td>
+                <td style="text-align: center; direction: ltr;">${formatNumber(selectedArchive.total_supervisors_commission, 2)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="footer">
+            <p>تم استخراج هذا التقرير من أرشيف نظام إدارة العمولات</p>
           </div>
           <script>
             window.onload = () => {
@@ -1508,6 +1713,13 @@ export default function CommissionsPage() {
                     >
                       <Download size={18} />
                     </button>
+                    <button 
+                      title="طباعة التقرير"
+                      onClick={handlePrintResults}
+                      className="p-2 hover:bg-blue-600/10 rounded-full text-blue-600 transition-colors"
+                    >
+                      <Printer size={18} />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1531,9 +1743,6 @@ export default function CommissionsPage() {
                       <p className="text-xs text-[#800000] dark:text-rose-400 uppercase font-bold mb-2">عمولة المشرف (للفلتر)</p>
                       <p className="text-2xl font-black text-[#800000] dark:text-rose-400 english-nums">{formatNumber(filteredResults.reduce((acc, row) => acc + row.supervisorCommission10, 0), 2)}</p>
                     </div>
-                    <button onClick={() => window.print()} className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md text-slate-600 dark:text-slate-300 hover:text-blue-600 transition-colors shadow-sm" title="طباعة التقرير">
-                      <Printer size={20} />
-                    </button>
                   </div>
                 )}
               </div>
@@ -1770,6 +1979,15 @@ export default function CommissionsPage() {
                         <div>
                           <p className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold mb-1">إجمالي المشرفين</p>
                           <p className="font-mono font-bold text-blue-600 dark:text-blue-400 english-nums text-sm">{formatNumber(selectedArchive.total_supervisors_commission, 2)}</p>
+                        </div>
+                        <div className="border-r border-slate-200 dark:border-slate-800 pr-4 mr-2">
+                          <button 
+                            title="طباعة الأرشيف"
+                            onClick={handlePrintArchive}
+                            className="p-2 hover:bg-blue-600/10 rounded-full text-blue-600 transition-colors"
+                          >
+                            <Printer size={20} />
+                          </button>
                         </div>
                       </div>
                     </div>
