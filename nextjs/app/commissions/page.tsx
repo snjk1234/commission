@@ -59,6 +59,40 @@ const normalizeArabic = (text: string) => {
     .trim();
 };
 
+// Clean Metadata from Filename for Display
+const cleanArchiveFilename = (filename: string) => {
+  if (!filename) return '';
+  return filename.replace(/__M\d+_Y\d+__/, '');
+};
+
+// Encode branch capsule attributes into name to avoid DB column failures
+const encodeBranchNameAttrs = (name: string, isNew: boolean, isSplit: boolean, splitSalesP1: number) => {
+  if (!isNew && !isSplit && splitSalesP1 === 0) return name;
+  return `${name}__ATTR_new:${isNew}_split:${isSplit}_p1:${splitSalesP1}__`;
+};
+
+// Decode branch capsule attributes from name
+const decodeBranchNameAttrs = (encodedName: string) => {
+  const result = {
+    cleanName: encodedName || '',
+    isNew: false,
+    isSplit: false,
+    splitSalesP1: 0
+  };
+
+  if (!encodedName) return result;
+
+  const match = encodedName.match(/(.*)__ATTR_new:(true|false)_split:(true|false)_p1:([\d.]+)__/);
+  if (match) {
+    result.cleanName = match[1];
+    result.isNew = match[2] === 'true';
+    result.isSplit = match[3] === 'true';
+    result.splitSalesP1 = parseFloat(match[4]) || 0;
+  }
+
+  return result;
+};
+
 const SUPERVISOR_COLORS = [
   { bg: 'bg-blue-500/10', text: 'text-blue-600 dark:text-blue-400', border: 'border-blue-500/20', accent: 'bg-blue-600', hover: 'hover:border-blue-500/50' },
   { bg: 'bg-emerald-500/10', text: 'text-emerald-600 dark:text-emerald-400', border: 'border-emerald-500/20', accent: 'bg-emerald-600', hover: 'hover:border-emerald-500/50' },
@@ -133,6 +167,7 @@ export default function CommissionsPage() {
   const [selectedArchive, setSelectedArchive] = useState<any>(null);
   const [archiveDetails, setArchiveDetails] = useState<any[]>([]);
   const [isArchiveLoading, setIsArchiveLoading] = useState(false);
+  const [archiveSortConfig, setArchiveSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
 
   // Results Editing State
   const [editingResult, setEditingResult] = useState<any>(null);
@@ -145,6 +180,13 @@ export default function CommissionsPage() {
   const [yearPrev, setYearPrev] = useState(2024);
   const [yearCurr, setYearCurr] = useState(2025);
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
+  const [isPrintMonthModalOpen, setIsPrintMonthModalOpen] = useState(false);
+  const [printSelectedMonth, setPrintSelectedMonth] = useState<number>(selectedMonth);
+
+  const openPrintMonthModal = () => {
+    setPrintSelectedMonth(selectedMonth);
+    setIsPrintMonthModalOpen(true);
+  };
 
   const supervisorColorMap = useMemo(() => {
     const map: Record<string, typeof SUPERVISOR_COLORS[0]> = {};
@@ -201,26 +243,32 @@ export default function CommissionsPage() {
         .select('*')
         .eq('archive_id', archiveId);
       
+      const decodedItems = (items || []).map(item => {
+        const decoded = decodeBranchNameAttrs(item.branch_name);
+        return {
+          ...item,
+          branch_name: decoded.cleanName,
+          is_new: decoded.isNew,
+          is_split: decoded.isSplit,
+          split_sales_p1: decoded.splitSalesP1
+        };
+      });
+
       setSelectedArchive(archive);
-      setArchiveDetails(items || []);
+      setArchiveDetails(decodedItems);
       
-      if (items && items.length > 0) {
-        const reconstructed2024 = items.map(item => {
-          const cleanName = item.branch_name.replace(' (جديد)', '').replace(' (افتتاح جزئي)', '');
-          return {
-            branchName: cleanName,
-            normalizedName: normalizeArabic(cleanName),
-            sales: item.sales_2024
-          };
-        });
-        const reconstructed2025 = items.map(item => {
-          const cleanName = item.branch_name.replace(' (جديد)', '').replace(' (افتتاح جزئي)', '');
-          return {
-            branchName: cleanName,
-            normalizedName: normalizeArabic(cleanName),
-            sales: item.sales_2025
-          };
-        });
+      // Treat archived data as current data for all tabs
+      if (decodedItems && decodedItems.length > 0) {
+        const reconstructed2024 = decodedItems.map(item => ({
+          branchName: item.branch_name,
+          normalizedName: normalizeArabic(item.branch_name),
+          sales: item.sales_2024
+        }));
+        const reconstructed2025 = decodedItems.map(item => ({
+          branchName: item.branch_name,
+          normalizedName: normalizeArabic(item.branch_name),
+          sales: item.sales_2025
+        }));
         
         setData2024(reconstructed2024);
         setData2025(reconstructed2025);
@@ -349,7 +397,8 @@ export default function CommissionsPage() {
       XLSX.utils.book_append_sheet(workbook, worksheet, "العمولات");
       
       const timestamp = new Date().toLocaleString('ar-EG', { hour12: false }).replace(/[/:]/g, '-');
-      const fullFileName = `تقرير_العمولات_${timestamp}.xlsx`;
+      // Encode month and year inside the filename (e.g. تقرير_العمولات_17-05-2026_14-18-53__M12_Y2025__.xlsx)
+      const fullFileName = `تقرير_العمولات_${timestamp}__M${selectedMonth}_Y${yearCurr}__.xlsx`;
       XLSX.writeFile(workbook, fullFileName);
 
       // 2. Save to Database Archive
@@ -368,23 +417,17 @@ export default function CommissionsPage() {
 
       if (archiveError) throw archiveError;
 
-      const archiveItems = filteredResults.map(row => {
-        let nameSuffix = '';
-        if (row.isNew) nameSuffix = ' (جديد)';
-        else if (row.isSplit) nameSuffix = ' (افتتاح جزئي)';
-        
-        return {
-          archive_id: archive.id,
-          branch_name: row.branchName + nameSuffix,
-          sales_2024: row.sales2024,
-          sales_2025: row.sales2025,
-          growth: row.growth,
-          rate: row.rate,
-          commission: row.commission,
-          supervisor_names: row.supervisorNames,
-          supervisor_commission: row.supervisorCommission10
-        };
-      });
+      const archiveItems = filteredResults.map(row => ({
+        archive_id: archive.id,
+        branch_name: encodeBranchNameAttrs(row.branchName, row.isNew || false, row.isSplit || false, row.splitSalesP1 || 0),
+        sales_2024: row.sales2024,
+        sales_2025: row.sales2025,
+        growth: row.growth,
+        rate: row.rate,
+        commission: row.commission,
+        supervisor_names: row.supervisorNames,
+        supervisor_commission: row.supervisorCommission10
+      }));
 
       const { error: itemsError } = await supabase
         .from('commission_archive_items')
@@ -394,9 +437,10 @@ export default function CommissionsPage() {
 
       alert('تم تصدير ملف الإكسل وحفظ النسخة في الأرشيف بنجاح');
       if (activeTab === 'archive') fetchArchives();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error during export/archive:', error);
-      alert('حدث خطأ أثناء حفظ الأرشيف، تأكد من وجود الجداول المطلوبة');
+      const errMsg = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+      alert('حدث خطأ أثناء حفظ الأرشيف:\n' + errMsg);
     }
   };
 
@@ -472,31 +516,32 @@ export default function CommissionsPage() {
     printWindow.document.close();
   };
 
-  const handlePrintResults = () => {
+  const handlePrintResults = (overrideMonth?: number) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
     const tableContent = filteredResults.map((row, idx) => `
       <tr>
-        <td style="text-align: center;">${idx + 1}</td>
-        <td style="text-align: right; font-weight: bold;">
+        <td style="text-align:center;">${idx + 1}</td>
+        <td style="text-align:right; font-weight:bold;">
           ${row.branchName}
-          ${row.isNew ? '<span style="font-size: 9px; color: #16a34a;"> (جديد)</span>' : ''}
-          ${row.isSplit ? '<span style="font-size: 9px; color: #ea580c;"> (جزئي)</span>' : ''}
+          ${row.isNew ? '<span style="font-size:8px; color:#16a34a;"> (جديد)</span>' : ''}
+          ${row.isSplit ? '<span style="font-size:8px; color:#ea580c;"> (جزئي)</span>' : ''}
         </td>
-        <td style="text-align: center; direction: ltr;">${formatNumber(row.sales2024)}</td>
-        <td style="text-align: center; direction: ltr;">${formatNumber(row.sales2025)}</td>
-        <td style="text-align: center; direction: ltr; color: ${row.difference >= 0 ? '#16a34a' : '#e11d48'};">${formatNumber(row.difference)}</td>
-        <td style="text-align: center; direction: ltr; color: #2563eb; font-weight: bold;">${formatNumber(row.growth, 2)}%</td>
-        <td style="text-align: center; direction: ltr; font-weight: bold; color: #d97706;">${formatNumber(row.rate * 100, 1)}%</td>
-        <td style="text-align: center; direction: ltr; font-weight: bold;">${formatNumber(row.commission, 2)}</td>
-        <td style="text-align: right;">${row.supervisorNames}</td>
-        <td style="text-align: center; direction: ltr; font-weight: bold;">${formatNumber(row.supervisorCommission10, 2)}</td>
+        <td style="text-align:center; direction:ltr;">${formatNumber(row.sales2024)}</td>
+        <td style="text-align:center; direction:ltr;">${formatNumber(row.sales2025)}</td>
+        <td style="text-align:center; direction:ltr; color:${row.difference >= 0 ? '#16a34a' : '#e11d48'};">${formatNumber(row.difference)}</td>
+        <td style="text-align:center; direction:ltr; color:#2563eb; font-weight:bold;">${formatNumber(row.growth, 2)}%</td>
+        <td style="text-align:center; direction:ltr; font-weight:bold; color:#d97706;">${formatNumber(row.rate * 100, 1)}%</td>
+        <td style="text-align:center; direction:ltr; font-weight:bold;">${formatNumber(row.commission, 2)}</td>
+        <td style="text-align:right;">${row.supervisorNames}</td>
+        <td style="text-align:center; direction:ltr; font-weight:bold;">${formatNumber(row.supervisorCommission10, 2)}</td>
       </tr>
     `).join('');
 
     const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-    const monthName = monthNames[selectedMonth - 1] || selectedMonth;
+    const printMonth = overrideMonth !== undefined ? overrideMonth : selectedMonth;
+    const monthName = monthNames[printMonth - 1] || printMonth;
     
     let supervisorName = 'الكل';
     if (activeFilterType === 'supervisor' && searchTerm) {
@@ -518,60 +563,71 @@ export default function CommissionsPage() {
       <html dir="rtl">
         <head>
           <title>تقرير العمولات</title>
+          <meta charset="utf-8">
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
-            @page { margin: 0.5cm; }
-            body { font-family: 'Tajawal', sans-serif; padding: 0; color: #333; font-size: 10px; line-height: 1.2; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10px; }
-            th { background-color: #f8fafc; padding: 4px; border: 1px solid #ddd; text-align: center; font-size: 11px; }
-            td { padding: 2px 4px; border: 1px solid #ddd; }
-            .header { text-align: center; margin-bottom: 15px; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; }
-            .header h1 { font-size: 18px; color: #1e293b; margin: 0 0 5px 0; }
-            .footer { margin-top: 20px; text-align: left; font-size: 10px; color: #666; }
-            .total-row td { background-color: #f1f5f9; font-weight: bold; padding: 6px 4px; }
+            @import url('https://fonts.googleapis.com/css2?family=Changa:wght@300;400;700&display=swap');
+            @page { size: A4 portrait; margin: 7mm 6mm; }
+            * { box-sizing: border-box; }
+            body { font-family: 'Changa', sans-serif; margin: 0; padding: 0; color: #111; font-size: 8px; line-height: 1.15; }
+            table { width: 100%; border-collapse: collapse; margin-top: 5px; table-layout: fixed; }
+            col.c-num   { width: 4%; }
+            col.c-name  { width: 16%; }
+            col.c-num4  { width: 9%; }
+            col.c-num5  { width: 9%; }
+            col.c-diff  { width: 9%; }
+            col.c-grow  { width: 6%; }
+            col.c-rate  { width: 6%; }
+            col.c-val   { width: 9%; }
+            col.c-sup   { width: 14%; }
+            col.c-scom  { width: 10%; }
+            th { background-color: #dce3ea; padding: 3px 3px; border: 1px solid #aaa; text-align: center; font-size: 8px; font-weight: bold; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+            td { padding: 2px 3px; border: 1px solid #ccc; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 8px; }
+            .header { text-align: center; margin-bottom: 5px; border-bottom: 1.5px solid #3b82f6; padding-bottom: 3px; }
+            .header h1 { font-size: 13px; color: #1e293b; margin: 0 0 1px 0; font-weight: bold; letter-spacing: 1px; }
+            .header p  { font-size: 7px; color: #64748b; margin: 0; }
+            .total-row { background-color: #dce3ea; font-weight: bold; }
+            .footer { margin-top: 4px; font-size: 7px; color: #888; }
             @media print { .no-print { display: none; } }
           </style>
         </head>
         <body>
           <div class="header">
-            <h1>تقرير عمولات فروع (${supervisorName}) لشهر (${monthName} ${yearCurr})</h1>
-            <p style="margin: 5px 0 0 0; color: #64748b;">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-EG')}</p>
+            <h1>مـبـيـعـات شـهـر ${monthName} لـعـام ${yearCurr} مـقـارنـةً مـع نـفـس الـشـهـر مـن عـام ${yearPrev}م</h1>
+            <p>تاريخ الطباعة: ${new Date().toLocaleDateString('ar-EG')}</p>
           </div>
           <table>
+            <colgroup>
+              <col class="c-num"><col class="c-name"><col class="c-num4"><col class="c-num5">
+              <col class="c-diff"><col class="c-grow"><col class="c-rate"><col class="c-val">
+              <col class="c-sup"><col class="c-scom">
+            </colgroup>
             <thead>
               <tr>
-                <th style="width: 30px;">م</th>
-                <th>اسم الفرع</th>
+                <th>م</th>
+                <th style="text-align:right;">اسم الفرع</th>
                 <th>مبيعات ${yearPrev}</th>
                 <th>مبيعات ${yearCurr}</th>
                 <th>الفارق</th>
-                <th>النمو %</th>
-                <th>العمولة %</th>
+                <th>نمو%</th>
+                <th>عمولة%</th>
                 <th>القيمة</th>
-                <th>المشرف</th>
-                <th>عمولة المشرف</th>
+                <th style="text-align:right;">المشرف</th>
+                <th>عم. المشرف</th>
               </tr>
             </thead>
             <tbody>
               ${tableContent}
               <tr class="total-row">
-                <td colspan="7" style="text-align: left;">الإجمالي الكلي</td>
-                <td style="text-align: center; direction: ltr;">${formatNumber(totalCommission, 2)}</td>
+                <td colspan="7" style="text-align:right;">الإجمالي</td>
+                <td style="text-align:center; direction:ltr;">${formatNumber(totalCommission, 2)}</td>
                 <td></td>
-                <td style="text-align: center; direction: ltr;">${formatNumber(totalSupCommission, 2)}</td>
+                <td style="text-align:center; direction:ltr;">${formatNumber(totalSupCommission, 2)}</td>
               </tr>
             </tbody>
           </table>
-          <div class="footer">
-            <p>تم استخراج هذا التقرير من نظام إدارة العمولات</p>
-          </div>
+          <div class="footer"><p>تم استخراج هذا التقرير من نظام إدارة العمولات</p></div>
           <script>
-            window.onload = () => {
-              setTimeout(() => {
-                window.print();
-                window.close();
-              }, 500);
-            };
+            window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 500); };
           </script>
         </body>
       </html>
@@ -579,86 +635,126 @@ export default function CommissionsPage() {
     printWindow.document.close();
   };
 
+  const requestArchiveSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (archiveSortConfig && archiveSortConfig.key === key && archiveSortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setArchiveSortConfig({ key, direction });
+  };
+
   const handlePrintArchive = () => {
-    if (!selectedArchive) return;
+    if (!selectedArchive || archiveDetails.length === 0) return;
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const tableContent = archiveDetails.map((row, idx) => `
+    const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+    // Extract month and year from the filename if encoded as metadata, fallback to current UI state
+    let archiveMonth = selectedMonth;
+    let archiveYearCurr = yearCurr;
+    
+    if (selectedArchive.filename && selectedArchive.filename.includes('__M')) {
+      const match = selectedArchive.filename.match(/__M(\d+)_Y(\d+)__/);
+      if (match) {
+        archiveMonth = parseInt(match[1], 10);
+        archiveYearCurr = parseInt(match[2], 10);
+      }
+    }
+    
+    const archiveYearPrev = archiveYearCurr - 1; // Assuming 1 year difference as per logic
+    const archiveMonthName = monthNames[archiveMonth - 1] || archiveMonth;
+
+    const tableContent = filteredArchiveDetails.map((item, idx) => `
       <tr>
-        <td style="text-align: center;">${idx + 1}</td>
-        <td style="text-align: right; font-weight: bold;">
-          ${row.branch_name}
+        <td style="text-align:center;">${idx + 1}</td>
+        <td style="text-align:right; font-weight:bold;">
+          ${item.branch_name}
+          ${item.is_new ? '<span style="font-size:8px; color:#16a34a;"> (جديد)</span>' : ''}
+          ${item.is_split ? '<span style="font-size:8px; color:#ea580c;"> (جزئي)</span>' : ''}
         </td>
-        <td style="text-align: center; direction: ltr;">${formatNumber(row.sales_2024)}</td>
-        <td style="text-align: center; direction: ltr;">${formatNumber(row.sales_2025)}</td>
-        <td style="text-align: center; direction: ltr; color: ${row.sales_2025 - row.sales_2024 >= 0 ? '#16a34a' : '#e11d48'};">${formatNumber(row.sales_2025 - row.sales_2024)}</td>
-        <td style="text-align: center; direction: ltr; color: #2563eb; font-weight: bold;">${formatNumber(row.growth, 2)}%</td>
-        <td style="text-align: center; direction: ltr; font-weight: bold; color: #d97706;">${formatNumber(row.rate * 100, 1)}%</td>
-        <td style="text-align: center; direction: ltr; font-weight: bold;">${formatNumber(row.commission, 2)}</td>
-        <td style="text-align: right;">${row.supervisor_names}</td>
-        <td style="text-align: center; direction: ltr; font-weight: bold;">${formatNumber(row.supervisor_commission, 2)}</td>
+        <td style="text-align:center; direction:ltr;">${formatNumber(item.sales_2024)}</td>
+        <td style="text-align:center; direction:ltr;">${formatNumber(item.sales_2025)}</td>
+        <td style="text-align:center; direction:ltr; color:${(item.difference ?? (item.sales_2025 - item.sales_2024)) >= 0 ? '#16a34a' : '#e11d48'};">${formatNumber(item.difference ?? (item.sales_2025 - item.sales_2024))}</td>
+        <td style="text-align:center; direction:ltr; color:#2563eb; font-weight:bold;">${formatNumber(item.growth, 2)}%</td>
+        <td style="text-align:center; direction:ltr; font-weight:bold; color:#d97706;">${formatNumber(item.rate * 100, 1)}%</td>
+        <td style="text-align:center; direction:ltr; font-weight:bold;">${formatNumber(item.commission, 2)}</td>
+        <td style="text-align:right;">${item.supervisor_names}</td>
+        <td style="text-align:center; direction:ltr; font-weight:bold;">${formatNumber(item.supervisor_commission, 2)}</td>
       </tr>
     `).join('');
+
+    const totalCommission = filteredArchiveDetails.reduce((sum, r) => sum + r.commission, 0);
+    const totalSupCommission = filteredArchiveDetails.reduce((sum, r) => sum + r.supervisor_commission, 0);
 
     printWindow.document.write(`
       <html dir="rtl">
         <head>
-          <title>طباعة الأرشيف - ${selectedArchive.filename}</title>
+          <title>${cleanArchiveFilename(selectedArchive.filename)}</title>
+          <meta charset="utf-8">
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
-            @page { margin: 0.5cm; }
-            body { font-family: 'Tajawal', sans-serif; padding: 0; color: #333; font-size: 10px; line-height: 1.2; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10px; }
-            th { background-color: #f8fafc; padding: 4px; border: 1px solid #ddd; text-align: center; font-size: 11px; }
-            td { padding: 2px 4px; border: 1px solid #ddd; }
-            .header { text-align: center; margin-bottom: 15px; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; }
-            .header h1 { font-size: 18px; color: #1e293b; margin: 0 0 5px 0; }
-            .footer { margin-top: 20px; text-align: left; font-size: 10px; color: #666; }
-            .total-row td { background-color: #f1f5f9; font-weight: bold; padding: 6px 4px; }
+            @import url('https://fonts.googleapis.com/css2?family=Changa:wght@300;400;700&display=swap');
+            @page { size: A4 portrait; margin: 7mm 6mm; }
+            * { box-sizing: border-box; }
+            body { font-family: 'Changa', sans-serif; margin: 0; padding: 0; color: #111; font-size: 8px; line-height: 1.15; }
+            table { width: 100%; border-collapse: collapse; margin-top: 5px; table-layout: fixed; }
+            col.c-num   { width: 4%; }
+            col.c-name  { width: 16%; }
+            col.c-num4  { width: 9%; }
+            col.c-num5  { width: 9%; }
+            col.c-diff  { width: 9%; }
+            col.c-grow  { width: 6%; }
+            col.c-rate  { width: 6%; }
+            col.c-val   { width: 9%; }
+            col.c-sup   { width: 14%; }
+            col.c-scom  { width: 10%; }
+            th { background-color: #dce3ea; padding: 3px 3px; border: 1px solid #aaa; text-align: center; font-size: 8px; font-weight: bold; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+            td { padding: 2px 3px; border: 1px solid #ccc; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 8px; }
+            .header { text-align: center; margin-bottom: 5px; border-bottom: 1.5px solid #3b82f6; padding-bottom: 3px; }
+            .header h1 { font-size: 13px; color: #1e293b; margin: 0 0 1px 0; font-weight: bold; letter-spacing: 1px; }
+            .header p  { font-size: 7px; color: #64748b; margin: 0; }
+            .total-row { background-color: #dce3ea; font-weight: bold; }
+            .footer { margin-top: 4px; font-size: 7px; color: #888; }
             @media print { .no-print { display: none; } }
           </style>
         </head>
         <body>
           <div class="header">
-            <h1>أرشيف العمولات: ${selectedArchive.filename.replace('[رفع ملف] ', '')}</h1>
-            <p style="margin: 5px 0 0 0; color: #64748b;">تاريخ الحفظ: ${new Date(selectedArchive.created_at).toLocaleString('ar-EG')} | تاريخ الطباعة: ${new Date().toLocaleDateString('ar-EG')}</p>
+            <h1>مـبـيـعـات شـهـر ${archiveMonthName} لـعـام ${archiveYearCurr} مـقـارنـةً مـع نـفـس الـشـهـر مـن عـام ${archiveYearPrev}م</h1>
+            <p>\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0623\u0631\u0634\u064a\u0641: ${new Date(selectedArchive.created_at).toLocaleDateString('ar-EG')} | \u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0637\u0628\u0627\u0639\u0629: ${new Date().toLocaleDateString('ar-EG')}</p>
           </div>
           <table>
+            <colgroup>
+              <col class="c-num"><col class="c-name"><col class="c-num4"><col class="c-num5">
+              <col class="c-diff"><col class="c-grow"><col class="c-rate"><col class="c-val">
+              <col class="c-sup"><col class="c-scom">
+            </colgroup>
             <thead>
               <tr>
-                <th style="width: 30px;">م</th>
-                <th>اسم الفرع</th>
-                <th>مبيعات ${yearPrev}</th>
-                <th>مبيعات ${yearCurr}</th>
-                <th>الفارق</th>
-                <th>النمو %</th>
-                <th>العمولة %</th>
-                <th>القيمة</th>
-                <th>المشرف</th>
-                <th>عمولة المشرف</th>
+                <th>\u0645</th>
+                <th style="text-align:right;">\u0627\u0633\u0645 \u0627\u0644\u0641\u0631\u0639</th>
+                <th>\u0645\u0628\u064a\u0639\u0627\u062a \u0627\u0644\u0633\u0627\u0628\u0642\u0629</th>
+                <th>\u0645\u0628\u064a\u0639\u0627\u062a \u0627\u0644\u062d\u0627\u0644\u064a\u0629</th>
+                <th>\u0627\u0644\u0641\u0627\u0631\u0642</th>
+                <th>\u0646\u0645\u0648%</th>
+                <th>\u0639\u0645\u0648\u0644\u0629%</th>
+                <th>\u0627\u0644\u0642\u064a\u0645\u0629</th>
+                <th style="text-align:right;">\u0627\u0644\u0645\u0634\u0631\u0641</th>
+                <th>\u0639\u0645. \u0627\u0644\u0645\u0634\u0631\u0641</th>
               </tr>
             </thead>
             <tbody>
               ${tableContent}
               <tr class="total-row">
-                <td colspan="7" style="text-align: left;">الإجمالي الكلي</td>
-                <td style="text-align: center; direction: ltr;">${formatNumber(selectedArchive.total_commission, 2)}</td>
+                <td colspan="7" style="text-align:right;">\u0627\u0644\u0625\u062c\u0645\u0627\u0644\u064a</td>
+                <td style="text-align:center; direction:ltr;">${formatNumber(totalCommission, 2)}</td>
                 <td></td>
-                <td style="text-align: center; direction: ltr;">${formatNumber(selectedArchive.total_supervisors_commission, 2)}</td>
+                <td style="text-align:center; direction:ltr;">${formatNumber(totalSupCommission, 2)}</td>
               </tr>
             </tbody>
           </table>
-          <div class="footer">
-            <p>تم استخراج هذا التقرير من أرشيف نظام إدارة العمولات</p>
-          </div>
+          <div class="footer"><p>\u062a\u0645 \u0627\u0633\u062a\u062e\u0631\u0627\u062c \u0647\u0630\u0627 \u0627\u0644\u062a\u0642\u0631\u064a\u0631 \u0645\u0646 \u0646\u0638\u0627\u0645 \u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0639\u0645\u0648\u0644\u0627\u062a</p></div>
           <script>
-            window.onload = () => {
-              setTimeout(() => {
-                window.print();
-                window.close();
-              }, 500);
-            };
+            window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 500); };
           </script>
         </body>
       </html>
@@ -1114,6 +1210,40 @@ export default function CommissionsPage() {
       commission: acc.commission + curr.commission
     }), { sales2024: 0, sales2025: 0, commission: 0 });
   }, [filteredResults]);
+
+  const filteredArchiveDetails = useMemo(() => {
+    let sorted = [...archiveDetails];
+
+    if (archiveSortConfig !== null) {
+      sorted.sort((a, b) => {
+        const keyMap: Record<string, string> = {
+          branchName: 'branch_name', sales2024: 'sales_2024', sales2025: 'sales_2025',
+          difference: 'difference', growth: 'growth', rate: 'rate',
+          commission: 'commission', supervisorNames: 'supervisor_names', supervisorCommission10: 'supervisor_commission'
+        };
+        const dbKey = keyMap[archiveSortConfig.key] || archiveSortConfig.key;
+        const aValue = a[dbKey];
+        const bValue = b[dbKey];
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          return archiveSortConfig.direction === 'asc'
+            ? aValue.localeCompare(bValue, 'ar')
+            : bValue.localeCompare(aValue, 'ar');
+        }
+        if (aValue < bValue) return archiveSortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return archiveSortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    if (searchTerm) {
+      sorted = sorted.filter(item =>
+        item.branch_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.supervisor_names?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    return sorted;
+  }, [archiveDetails, archiveSortConfig, searchTerm]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 w-full mx-auto px-2 md:px-3 pb-3 transition-all duration-500" dir="rtl">
@@ -1715,7 +1845,7 @@ export default function CommissionsPage() {
                     </button>
                     <button 
                       title="طباعة التقرير"
-                      onClick={handlePrintResults}
+                      onClick={openPrintMonthModal}
                       className="p-2 hover:bg-blue-600/10 rounded-full text-blue-600 transition-colors"
                     >
                       <Printer size={18} />
@@ -1738,11 +1868,9 @@ export default function CommissionsPage() {
                   <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 english-nums">{formatNumber(resultsTotals.commission, 2)}</p>
                 </div>
                 {searchTerm && dbSupervisors.some(s => s.name.toLowerCase().includes(searchTerm.toLowerCase())) && (
-                  <div className="bg-[#800000]/5 dark:bg-[#800000]/10 border border-[#800000]/20 p-3 rounded-md transition-colors border-r-4 border-r-[#800000] flex-[1.5] flex justify-between items-center">
-                    <div>
-                      <p className="text-xs text-[#800000] dark:text-rose-400 uppercase font-bold mb-2">عمولة المشرف (للفلتر)</p>
-                      <p className="text-2xl font-black text-[#800000] dark:text-rose-400 english-nums">{formatNumber(filteredResults.reduce((acc, row) => acc + row.supervisorCommission10, 0), 2)}</p>
-                    </div>
+                  <div className="bg-[#800000]/5 dark:bg-[#800000]/10 border border-[#800000]/20 p-3 rounded-md transition-colors border-r-4 border-r-[#800000] flex-[1.5]">
+                    <p className="text-xs text-[#800000] dark:text-rose-400 uppercase font-bold mb-2">عمولة المشرف (للفلتر)</p>
+                    <p className="text-2xl font-black text-[#800000] dark:text-rose-400 english-nums">{formatNumber(filteredResults.reduce((acc, row) => acc + row.supervisorCommission10, 0), 2)}</p>
                   </div>
                 )}
               </div>
@@ -1886,7 +2014,7 @@ export default function CommissionsPage() {
                                   <FileSpreadsheet size={24} />
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                  <h4 className="font-bold text-slate-800 dark:text-slate-200 truncate" title={arc.filename}>{arc.filename}</h4>
+                                  <h4 className="font-bold text-slate-800 dark:text-slate-200 truncate" title={cleanArchiveFilename(arc.filename)}>{cleanArchiveFilename(arc.filename)}</h4>
                                   <p className="text-xs text-slate-400 dark:text-slate-500">{new Date(arc.created_at).toLocaleString('ar-EG')}</p>
                                 </div>
                               </div>
@@ -1934,7 +2062,7 @@ export default function CommissionsPage() {
                                   <Upload size={24} />
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                  <h4 className="font-bold text-slate-800 dark:text-slate-200 truncate" title={arc.filename}>{arc.filename}</h4>
+                                  <h4 className="font-bold text-slate-800 dark:text-slate-200 truncate" title={cleanArchiveFilename(arc.filename)}>{cleanArchiveFilename(arc.filename)}</h4>
                                   <p className="text-xs text-slate-400 dark:text-slate-500">{new Date(arc.created_at).toLocaleString('ar-EG')}</p>
                                 </div>
                               </div>
@@ -1961,13 +2089,13 @@ export default function CommissionsPage() {
                   <div className="flex flex-col sm:flex-row justify-start items-start sm:items-center gap-4 mb-4 transition-colors duration-500">
                     <div className="flex items-center gap-3 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 pl-4 rounded-full shadow-sm w-fit">
                       <button 
-                        onClick={() => setSelectedArchive(null)}
+                        onClick={() => { setSelectedArchive(null); setArchiveSortConfig(null); }}
                         className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors"
                       >
                         <X size={20} />
                       </button>
                       <div className="pr-2 border-r border-slate-200 dark:border-slate-800 min-w-0 flex-1">
-                        <h3 className="text-lg font-extrabold text-slate-800 dark:text-slate-100 truncate max-w-[200px] md:max-w-[400px]" title={selectedArchive.filename}>{selectedArchive.filename}</h3>
+                        <h3 className="text-lg font-extrabold text-slate-800 dark:text-slate-100 truncate max-w-[200px] md:max-w-[400px]" title={cleanArchiveFilename(selectedArchive.filename)}>{cleanArchiveFilename(selectedArchive.filename)}</h3>
                         <p className="text-[10px] text-slate-400 dark:text-slate-500">بتاريخ {new Date(selectedArchive.created_at).toLocaleString('ar-EG')}</p>
                       </div>
                       
@@ -1980,15 +2108,31 @@ export default function CommissionsPage() {
                           <p className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold mb-1">إجمالي المشرفين</p>
                           <p className="font-mono font-bold text-blue-600 dark:text-blue-400 english-nums text-sm">{formatNumber(selectedArchive.total_supervisors_commission, 2)}</p>
                         </div>
-                        <div className="border-r border-slate-200 dark:border-slate-800 pr-4 mr-2">
-                          <button 
-                            title="طباعة الأرشيف"
-                            onClick={handlePrintArchive}
-                            className="p-2 hover:bg-blue-600/10 rounded-full text-blue-600 transition-colors"
-                          >
-                            <Printer size={20} />
-                          </button>
+                      </div>
+
+                      <div className="flex items-center gap-2 pr-4 border-r border-slate-200 dark:border-slate-800">
+                        <div className="relative flex items-center">
+                          <Search className="absolute right-2 text-slate-400" size={14} />
+                          <input 
+                            type="text" 
+                            placeholder="بحث..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="bg-slate-50 dark:bg-slate-800/50 border-none rounded-full pr-8 pl-8 py-1 text-xs w-28 focus:w-44 transition-all focus:ring-1 focus:ring-blue-500/30"
+                          />
+                          {searchTerm && (
+                            <button onClick={() => setSearchTerm('')} className="absolute left-2 text-slate-400 hover:text-slate-600">
+                              <X size={12} />
+                            </button>
+                          )}
                         </div>
+                        <button
+                          title="طباعة تقرير الأرشيف"
+                          onClick={handlePrintArchive}
+                          className="p-2 hover:bg-blue-600/10 rounded-full text-blue-600 transition-colors"
+                        >
+                          <Printer size={18} />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1998,25 +2142,53 @@ export default function CommissionsPage() {
                       <div className="min-w-[1400px]">
                         <div className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 text-[13px] text-slate-400 dark:text-slate-500 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-950 sticky top-0 z-10 transition-colors">
                           <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800">م</div>
-                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">الفرع</div>
-                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">{yearPrev}</div>
-                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">{yearCurr}</div>
-                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">الفارق</div>
-                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">النمو</div>
-                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">العمولة %</div>
-                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">القيمة</div>
-                          <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800">المشرف</div>
-                          <div className="p-3 text-right">عمولة المشرف</div>
+                          {[
+                            { key: 'branchName', label: 'الفرع' },
+                            { key: 'sales2024', label: String(yearPrev) },
+                            { key: 'sales2025', label: String(yearCurr) },
+                            { key: 'difference', label: 'الفارق' },
+                            { key: 'growth', label: 'النمو' },
+                            { key: 'rate', label: 'العمولة %' },
+                            { key: 'commission', label: 'القيمة' },
+                            { key: 'supervisorNames', label: 'المشرف' },
+                          ].map((col) => (
+                            <button
+                              key={col.key}
+                              onClick={() => requestArchiveSort(col.key)}
+                              className="p-3 text-right border-l border-slate-200 dark:border-slate-800 flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-800/40 transition-colors group"
+                            >
+                              {col.label}
+                              <div className="flex flex-col opacity-0 group-hover:opacity-100 transition-opacity">
+                                <ChevronUp size={12} className={archiveSortConfig?.key === col.key && archiveSortConfig.direction === 'asc' ? 'text-blue-500' : ''} />
+                                <ChevronDown size={12} className={archiveSortConfig?.key === col.key && archiveSortConfig.direction === 'desc' ? 'text-blue-500' : ''} />
+                              </div>
+                            </button>
+                          ))}
+                          <button onClick={() => requestArchiveSort('supervisorCommission10')} className="p-3 text-right flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-800/40 transition-colors group">
+                            عمولة المشرف
+                            <div className="flex flex-col opacity-0 group-hover:opacity-100 transition-opacity">
+                              <ChevronUp size={12} className={archiveSortConfig?.key === 'supervisorCommission10' && archiveSortConfig.direction === 'asc' ? 'text-blue-500' : ''} />
+                              <ChevronDown size={12} className={archiveSortConfig?.key === 'supervisorCommission10' && archiveSortConfig.direction === 'desc' ? 'text-blue-500' : ''} />
+                            </div>
+                          </button>
                         </div>
                         <div className="divide-y divide-slate-200 dark:divide-slate-800/30">
-                          {archiveDetails.map((item, idx) => (
+                          {filteredArchiveDetails.map((item, idx) => (
                             <div key={idx} className="grid grid-cols-[60px_1.2fr_120px_120px_120px_90px_90px_120px_1.2fr_130px] gap-0 items-center text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/40 border-b border-slate-200/50 dark:border-slate-800/20 transition-colors">
                               <div className="p-3 text-center border-l border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-950/10 font-mono english-nums text-slate-400 dark:text-slate-500">{idx + 1}</div>
-                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-bold text-slate-800 dark:text-slate-100 truncate">{item.branch_name}</div>
-                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums">{formatNumber(item.sales_2024)}</div>
+                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-bold text-slate-800 dark:text-slate-100 truncate flex items-center gap-2">
+                                <span className="truncate">{item.branch_name}</span>
+                                {item.is_new && (
+                                  <span className="px-1.5 py-0.5 bg-green-500/10 text-green-600 dark:text-green-400 text-[9px] rounded-full border border-green-500/20 font-bold whitespace-nowrap">جديد</span>
+                                )}
+                                {item.is_split && (
+                                  <span className="px-1.5 py-0.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 text-[9px] rounded-full border border-orange-500/20 font-bold whitespace-nowrap">افتتاح جزئي</span>
+                                )}
+                              </div>
+                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums text-slate-500 dark:text-slate-400">{formatNumber(item.sales_2024)}</div>
                               <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums">{formatNumber(item.sales_2025)}</div>
-                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums">{formatNumber(item.sales_2025 - item.sales_2024)}</div>
-                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums">{formatNumber(item.growth, 2)}%</div>
+                              <div className={`p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono english-nums font-bold ${(item.difference ?? (item.sales_2025 - item.sales_2024)) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{formatNumber(item.difference ?? (item.sales_2025 - item.sales_2024))}</div>
+                              <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-mono text-blue-600 dark:text-blue-400 english-nums font-semibold">{formatNumber(item.growth, 2)}%</div>
                               <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-bold text-amber-600 dark:text-amber-400 english-nums">{formatNumber(item.rate * 100, 1)}%</div>
                               <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 font-bold text-slate-800 dark:text-slate-100 english-nums">{formatNumber(item.commission, 2)}</div>
                               <div className="p-3 text-right border-l border-slate-200 dark:border-slate-800/50 text-blue-600 dark:text-blue-400 font-bold truncate">{item.supervisor_names}</div>
@@ -2436,6 +2608,62 @@ export default function CommissionsPage() {
                 <button 
                   onClick={() => setIsResultEditModalOpen(false)}
                   className="px-8 py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold rounded-2xl transition-all"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Print Month Selector Modal */}
+      <AnimatePresence>
+        {isPrintMonthModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsPrintMonthModalOpen(false)} className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden p-6 transition-colors duration-500 text-right" dir="rtl">
+              <div className="mb-4 flex justify-between items-center border-b border-slate-200 dark:border-slate-800 pb-3">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                  <Printer className="text-blue-600" size={18} />
+                  <span>تأكيد شهر طباعة التقرير</span>
+                </h3>
+                <button onClick={() => setIsPrintMonthModalOpen(false)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-colors"><X size={18} /></button>
+              </div>
+              
+              <div className="space-y-4">
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                  الرجاء تحديد الشهر الذي ترغب في اعتماده لترويسة وعنوان هذا التقرير المطبوع. 
+                  (افتراضياً، تم ضبطه على الشهر النشط حالياً في تبويب رفع البيانات).
+                </p>
+                
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">اختر الشهر للتقرير</label>
+                  <select
+                    value={printSelectedMonth}
+                    onChange={(e) => setPrintSelectedMonth(parseInt(e.target.value, 10))}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold transition-colors"
+                  >
+                    {['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'].map((m, idx) => (
+                      <option key={idx} value={idx + 1}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              
+              <div className="mt-6 flex gap-3">
+                <button 
+                  onClick={() => {
+                    handlePrintResults(printSelectedMonth);
+                    setIsPrintMonthModalOpen(false);
+                  }}
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-xs transition-all shadow-lg shadow-blue-900/40"
+                >
+                  تأكيد وطباعة التقرير
+                </button>
+                <button 
+                  onClick={() => setIsPrintMonthModalOpen(false)}
+                  className="px-6 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold rounded-xl text-xs transition-all"
                 >
                   إلغاء
                 </button>
