@@ -37,6 +37,12 @@ import {
 import { SUPERVISORS_DATA, calculateCommissionRate, SupervisorGroup } from '@/lib/commission-utils';
 import { createClient } from '@/utils/supabase/client';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { StatsCard } from '@/components/ui/stats-card';
+import { SimpleChart } from '@/components/ui/simple-chart';
+import { NotificationPanel } from '@/components/ui/notification-panel';
+import { ProgressTracker } from '@/components/ui/progress-tracker';
+import { CommissionOptimizer } from '@/components/ui/commission-optimizer';
+import { EmployeePerformance } from '@/components/ui/employee-performance';
 
 const supabase = createClient();
 
@@ -125,6 +131,68 @@ interface CalculatedData {
   openingDay?: number;
 }
 
+// Sample notifications data
+  const sampleNotifications = [
+    {
+      id: '1',
+      title: 'تقرير شهري جاهز',
+      message: 'تم إعداد تقرير العمولات لشهر مايو 2025',
+      type: 'success' as const,
+      timestamp: new Date(Date.now() - 1000 * 60 * 60), // 1 hour ago
+      read: false
+    },
+    {
+      id: '2',
+      title: 'تحذير',
+      message: 'انخفاض في المبيعات لفرع الرياض الرئيسي',
+      type: 'warning' as const,
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5), // 5 hours ago
+      read: false
+    },
+    {
+      id: '3',
+      title: 'معلومات',
+      message: 'تمت إضافة 3 فروع جديدة إلى النظام',
+      type: 'info' as const,
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
+      read: true
+    }
+  ];
+  
+  // Sample steps for progress tracker
+  const processingSteps = [
+    {
+      id: 'upload',
+      title: 'رفع البيانات',
+      description: 'رفع ملفات المبيعات للعامين',
+      status: 'completed' as const
+    },
+    {
+      id: 'validate',
+      title: 'التحقق من البيانات',
+      description: 'التحقق من صحة البيانات المدخلة',
+      status: 'completed' as const
+    },
+    {
+      id: 'calculate',
+      title: 'الحسابات',
+      description: 'حساب العمولات والمقارنات',
+      status: 'in-progress' as const
+    },
+    {
+      id: 'review',
+      title: 'مراجعة النتائج',
+      description: 'مراجعة النتائج قبل التصدير',
+      status: 'pending' as const
+    },
+    {
+      id: 'export',
+      title: 'التصدير',
+      description: 'تصدير التقارير والنتائج',
+      status: 'pending' as const
+    }
+  ];
+
 export default function CommissionsPage() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
@@ -133,6 +201,48 @@ export default function CommissionsPage() {
   const [data2025, setData2025] = useState<ExcelRow[]>([]);
   const [calculatedData, setCalculatedData] = useState<CalculatedData[]>([]);
   const [activeFilterType, setActiveFilterType] = useState<'all' | 'new' | 'partial' | 'no-supervisor' | 'no-sales' | 'zero-sales' | 'supervisor' | 'branch'>('all');
+  const [notifications, setNotifications] = useState(sampleNotifications);
+
+  const processNotifications = () => {
+    // Process notifications based on calculated data
+    const newNotifications = [...sampleNotifications];
+
+    // Add notification for branches with zero sales
+    const zeroSalesBranches = calculatedData.filter(b => b.sales2025 === 0 && b.sales2024 > 0);
+    if (zeroSalesBranches.length > 0) {
+      newNotifications.push({
+        id: `zero-sales-${Date.now()}`,
+        title: 'فروع بدون مبيعات',
+        message: `وجدنا ${zeroSalesBranches.length} فرع لم يسجل أي مبيعات هذا الشهر`,
+        type: 'warning' as const,
+        timestamp: new Date(),
+        read: false
+      });
+    }
+
+    // Add notification for top performing branches
+    const topPerformers = calculatedData
+      .filter(b => b.sales2025 > 0)
+      .sort((a, b) => b.sales2025 - a.sales2025)
+      .slice(0, 3);
+
+    if (topPerformers.length > 0) {
+      newNotifications.push({
+        id: `top-performers-${Date.now()}`,
+        title: 'أفضل الفروع أداءً',
+        message: `أفضل 3 فروع من حيث المبيعات: ${topPerformers.map(b => b.branchName).join(', ')}`,
+        type: 'success' as const,
+        timestamp: new Date(),
+        read: false
+      });
+    }
+
+    setNotifications(newNotifications);
+  };
+
+  useEffect(() => {
+    processNotifications();
+  }, [calculatedData]);
 
   const navigateTo = (tab: string, filterStr: string = '', filterType: typeof activeFilterType = 'all') => {
     setActiveTab(tab);
@@ -152,10 +262,11 @@ export default function CommissionsPage() {
 
   // Modals
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
-  const [editingBranch, setEditingBranch] = useState<{id: string, name: string, opening_day?: number, opening_month?: number} | null>(null);
+  const [editingBranch, setEditingBranch] = useState<{id: string, name: string, opening_day?: number, opening_month?: number, opening_year?: number} | null>(null);
   const [modalBranchName, setModalBranchName] = useState('');
   const [modalBranchOpeningDay, setModalBranchOpeningDay] = useState<number | ''>('');
   const [modalBranchOpeningMonth, setModalBranchOpeningMonth] = useState<number | ''>('');
+  const [modalBranchOpeningYear, setModalBranchOpeningYear] = useState<number | ''>('');
   const [modalBranchSupervisors, setModalBranchSupervisors] = useState<{id: string, share: number}[]>([]);
 
   const [isSupervisorModalOpen, setIsSupervisorModalOpen] = useState(false);
@@ -195,7 +306,7 @@ export default function CommissionsPage() {
     });
     return map;
   }, [dbSupervisors]);
-
+  
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const [isSidebarPinned, setIsSidebarPinned] = useState(true);
 
@@ -1019,14 +1130,16 @@ export default function CommissionsPage() {
           name: modalBranchName, 
           normalized_name: normalizeArabic(modalBranchName),
           opening_day: modalBranchOpeningDay === '' ? null : modalBranchOpeningDay,
-          opening_month: modalBranchOpeningMonth === '' ? null : modalBranchOpeningMonth
+          opening_month: modalBranchOpeningMonth === '' ? null : modalBranchOpeningMonth,
+          opening_year: modalBranchOpeningYear === '' ? null : modalBranchOpeningYear
         }).eq('id', branchId);
       } else {
         const { data, error } = await supabase.from('commission_branches').insert({ 
           name: modalBranchName, 
           normalized_name: normalizeArabic(modalBranchName),
           opening_day: modalBranchOpeningDay === '' ? null : modalBranchOpeningDay,
-          opening_month: modalBranchOpeningMonth === '' ? null : modalBranchOpeningMonth
+          opening_month: modalBranchOpeningMonth === '' ? null : modalBranchOpeningMonth,
+          opening_year: modalBranchOpeningYear === '' ? null : modalBranchOpeningYear
         }).select().single();
         if (error) throw error;
         branchId = data.id;
@@ -1090,6 +1203,38 @@ export default function CommissionsPage() {
       };
     });
   }, [calculatedData, dbBranches, dbSupervisors, dbAssignments]);
+
+  // Prepare data for comparison chart
+  const [comparisonType, setComparisonType] = useState('sales');
+
+  const comparisonData = useMemo(() => {
+    if (comparisonType === 'sales') {
+      return [...enrichedResults]
+        .sort((a, b) => b.sales2025 - a.sales2025)
+        .slice(0, 7)
+        .map((branch, index) => ({
+          label: branch.branchName,
+          value: branch.sales2025,
+          color: [
+            'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500', 
+            'bg-rose-500', 'bg-indigo-500', 'bg-teal-500', 'bg-orange-500'
+          ][index % 8]
+        }));
+    } else {
+      return [...enrichedResults]
+        .filter(b => b.sales2024 > 0)
+        .sort((a, b) => b.growth - a.growth)
+        .slice(0, 7)
+        .map((branch, index) => ({
+          label: branch.branchName,
+          value: branch.growth,
+          color: [
+            'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500', 
+            'bg-rose-500', 'bg-indigo-500', 'bg-teal-500', 'bg-orange-500'
+          ][index % 8]
+        }));
+    }
+  }, [enrichedResults, comparisonType]);
 
   // Map database data to supervisorCalculations for the summary cards
   const supervisorCalculations = useMemo(() => {
@@ -1355,6 +1500,7 @@ export default function CommissionsPage() {
               { id: 'dashboard', label: 'لوحة البيانات', icon: LayoutDashboard },
               { id: 'upload', label: 'رفع البيانات', icon: Upload },
               { id: 'results', label: 'النتائج', icon: Calculator },
+              { id: 'comparisons', label: 'مقارنات', icon: TrendingUp },
               { id: 'archive', label: 'الأرشيف', icon: Archive },
               { id: 'branches', label: 'الفروع', icon: FileSpreadsheet },
               { id: 'supervisors', label: 'المشرفين', icon: Users },
@@ -1438,6 +1584,115 @@ export default function CommissionsPage() {
                 </div>
               ) : (
                 <>
+                  {/* Advanced Dashboard */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                    {/* Stats Cards */}
+                    <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <StatsCard 
+                        title="إجمالي المبيعات" 
+                        value={resultsTotals.sales2025} 
+                        change={(() => {
+                          const overallGrowth = resultsTotals.sales2024 !== 0 ? ((resultsTotals.sales2025 / resultsTotals.sales2024) - 1) * 100 : 0;
+                          return overallGrowth;
+                        })()} 
+                        icon={<Calculator size={20} />} 
+                        format="currency" 
+                      />
+                      <StatsCard 
+                        title="إجمالي العمولات" 
+                        value={resultsTotals.commission} 
+                        change={(() => {
+                          const commissionGrowth = calculatedData.length > 0 
+                            ? ((resultsTotals.commission / (calculatedData.reduce((acc, b) => acc + (calculateCommissionRate(b.sales2024, b.sales2025) * b.sales2025), 0))) - 1) * 100 
+                            : 0;
+                          return commissionGrowth;
+                        })()} 
+                        icon={<Award size={20} />} 
+                        format="currency" 
+                      />
+                      <StatsCard 
+                        title="عدد الفروع" 
+                        value={calculatedData.length} 
+                        change={(() => {
+                          const prevBranches = data2024.length;
+                          return prevBranches > 0 ? ((calculatedData.length - prevBranches) / prevBranches) * 100 : 0;
+                        })()} 
+                        icon={<LayoutDashboard size={20} />} 
+                      />
+                      <StatsCard 
+                        title="متوسط النمو" 
+                        value={(() => {
+                          const growthRates = calculatedData.map(b => b.growth).filter(g => !isNaN(g));
+                          const avgGrowth = growthRates.length > 0 
+                            ? growthRates.reduce((acc, g) => acc + g, 0) / growthRates.length 
+                            : 0;
+                          return avgGrowth;
+                        })()} 
+                        change={0} 
+                        icon={<TrendingUp size={20} />} 
+                        format="percentage" 
+                      />
+                    </div>
+                    
+                    {/* Notifications */}
+                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md shadow-md p-4 flex flex-col h-fit">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-slate-800 dark:text-slate-200">الإشعارات</h3>
+                        <NotificationPanel 
+                          notifications={notifications} 
+                          onMarkAsRead={(id) => setNotifications(notifications.map(n => n.id === id ? {...n, read: true} : n))}
+                          onDismiss={(id) => setNotifications(notifications.filter(n => n.id !== id))}
+                        />
+                      </div>
+                      <div className="space-y-3 max-h-80 overflow-y-auto">
+                        {notifications.slice(0, 5).map(notification => (
+                          <div 
+                            key={notification.id} 
+                            className={`p-3 rounded-lg border ${!notification.read ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/50' : 'bg-slate-50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800/50'}`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <div className={`p-1 rounded ${notification.type === 'success' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : notification.type === 'warning' ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                                {notification.type === 'success' ? <CheckCircle2 size={16} /> : notification.type === 'warning' ? <AlertTriangle size={16} /> : <Info size={16} />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{notification.title}</h4>
+                                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">{notification.message}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">{new Date(notification.timestamp).toLocaleDateString('ar-SA')}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Charts and Progress */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                    {/* Sales Chart */}
+                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md shadow-md p-4 lg:col-span-2">
+                      <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-4">مقارنة المبيعات</h3>
+                      <div className="h-64 flex items-center justify-center">
+                        <SimpleChart 
+                          data={[
+                            { label: yearPrev, value: resultsTotals.sales2024, color: 'bg-blue-500' },
+                            { label: yearCurr, value: resultsTotals.sales2025, color: 'bg-emerald-500' }
+                          ]} 
+                          type="bar" 
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Progress Tracker */}
+                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md shadow-md p-4">
+                      <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-4">متابعة المعالجة</h3>
+                      <ProgressTracker 
+                        steps={processingSteps} 
+                        currentStep="calculate" 
+                        onStepClick={(stepId) => console.log('Navigating to:', stepId)} 
+                      />
+                    </div>
+                  </div>
+                  
                   {/* Financial Summary */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-5 rounded-md shadow-lg transition-all relative overflow-hidden group">
@@ -1491,7 +1746,7 @@ export default function CommissionsPage() {
                       </p>
                     </div>
                   </div>
-
+                
                   {/* Top Performers */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     {/* Top Sales */}
@@ -1564,6 +1819,46 @@ export default function CommissionsPage() {
                           </button>
                         ))}
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Commission Analysis Tools */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    {/* Commission Optimizer */}
+                    <div>
+                      <CommissionOptimizer
+                        branches={enrichedResults.map(b => ({
+                          id: b.id,
+                          name: b.branchName,
+                          sales2024: b.sales2024,
+                          sales2025: b.sales2025,
+                          currentCommission: b.commission,
+                          supervisorCommission: b.supervisorCommission || 0
+                        }))}
+                      />
+                    </div>
+                    
+                    {/* Employee Performance */}
+                    <div>
+                      <EmployeePerformance
+                        employees={enrichedResults.map(b => ({
+                          id: b.id,
+                          name: b.branchName,
+                          position: 'مدير فرع',
+                          branch: b.branchName,
+                          performance: {
+                            sales2024: b.sales2024,
+                            sales2025: b.sales2025,
+                            growth: b.growth,
+                            commission2024: b.sales2024 * 0.05,
+                            commission2025: b.commission,
+                            commissionGrowth: b.sales2024 > 0 ? ((b.commission - (b.sales2024 * 0.05)) / (b.sales2024 * 0.05)) * 100 : 0,
+                            achievements: b.growth > 20 ? ['نمو مبيعات متميز'] : [],
+                            goalsCompleted: b.growth > 0 ? 1 : 0,
+                            totalGoals: 2
+                          }
+                        }))}
+                      />
                     </div>
                   </div>
 
@@ -1952,6 +2247,145 @@ export default function CommissionsPage() {
                 </div>
               </div>
             </motion.div>
+
+          )}
+
+          {activeTab === 'comparisons' && (
+            <motion.div
+              key="comparisons"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              <div className="flex flex-col sm:flex-row justify-start items-start sm:items-center gap-4 mb-4 transition-colors duration-500">
+                <div className="flex items-center gap-3 bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 p-2 pl-4 rounded-full shadow-sm w-fit">
+                  <div className="p-2 bg-blue-600/10 rounded-full text-blue-600 dark:text-blue-400">
+                    <TrendingUp size={20} />
+                  </div>
+                  <h2 className="text-md font-bold text-slate-800 dark:text-slate-100 ml-4">مقارنات</h2>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+                {/* Top Performers */}
+                <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md shadow-md p-4 lg:col-span-1">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <TrendingUp className="text-emerald-500" size={18} />
+                      أفضل 5 فروع أداءً
+                    </h3>
+                    <button 
+                      onClick={() => navigateTo('results', '', 'all')} 
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      عرض الكل
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {[...enrichedResults]
+                      .sort((a, b) => b.sales2025 - a.sales2025)
+                      .slice(0, 5)
+                      .map((branch, idx) => (
+                        <div 
+                          key={branch.id} 
+                          className="flex items-center justify-between p-2 hover:bg-slate-50 dark:hover:bg-slate-800/30 rounded-md cursor-pointer transition-colors"
+                          onClick={() => navigateTo('results', branch.branchName, 'branch')}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-slate-400 w-4">{idx + 1}</span>
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate max-w-[150px]">{branch.branchName}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-slate-900 dark:text-white english-nums">
+                              {isAmountsHidden ? '••••' : formatNumber(branch.sales2025)}
+                            </span>
+                            {branch.growth > 0 && (
+                              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                <TrendingUp size={12} />
+                                {formatNumber(branch.growth, 1)}%
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    }
+                  </div>
+                </div>
+
+                {/* Branch Comparison Chart */}
+                <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md shadow-md p-4 lg:col-span-1">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-bold text-slate-800 dark:text-slate-200">مقارنة الفروع</h3>
+                    <div className="flex gap-1">
+                      <button 
+                        onClick={() => setComparisonType('sales')} 
+                        className={`text-xs px-2 py-1 rounded ${comparisonType === 'sales' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
+                      >
+                        المبيعات
+                      </button>
+                      <button 
+                        onClick={() => setComparisonType('growth')} 
+                        className={`text-xs px-2 py-1 rounded ${comparisonType === 'growth' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
+                      >
+                        النمو
+                      </button>
+                    </div>
+                  </div>
+                  <div className="h-64 flex items-center justify-center">
+                    <SimpleChart 
+                      data={comparisonData} 
+                      type="bar" 
+                      maxValue={comparisonType === 'growth' ? 100 : undefined}
+                    />
+                  </div>
+                </div>
+
+                {/* Lowest Performers */}
+                <div className="bg-white dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-md shadow-md p-4 lg:col-span-1">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <TrendingDown className="text-rose-500" size={18} />
+                      أسوأ 5 فروع أداءً
+                    </h3>
+                    <button 
+                      onClick={() => navigateTo('results', '', 'all')} 
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      عرض الكل
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {[...enrichedResults]
+                      .filter(b => b.sales2024 > 0)
+                      .sort((a, b) => a.growth - b.growth)
+                      .slice(0, 5)
+                      .map((branch, idx) => (
+                        <div 
+                          key={branch.id} 
+                          className="flex items-center justify-between p-2 hover:bg-slate-50 dark:hover:bg-slate-800/30 rounded-md cursor-pointer transition-colors"
+                          onClick={() => navigateTo('results', branch.branchName, 'branch')}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-slate-400 w-4">{idx + 1}</span>
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate max-w-[150px]">{branch.branchName}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-slate-900 dark:text-white english-nums">
+                              {isAmountsHidden ? '••••' : formatNumber(branch.sales2025)}
+                            </span>
+                            <span className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                              <TrendingDown size={12} />
+                              {formatNumber(branch.growth, 1)}%
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    }
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
           )}
 
           {activeTab === 'archive' && (
@@ -2286,6 +2720,7 @@ export default function CommissionsPage() {
                               setModalBranchName(branch.name);
                               setModalBranchOpeningDay(branch.opening_day || '');
                               setModalBranchOpeningMonth(branch.opening_month || '');
+                              setModalBranchOpeningYear(branch.opening_year || '');
                               setModalBranchSupervisors(assignments.map(a => ({ id: a.supervisor_id, share: a.share })));
                               setIsBranchModalOpen(true);
                               setSearchTerm('');
@@ -2464,7 +2899,7 @@ export default function CommissionsPage() {
                   <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-400 mb-1 uppercase tracking-wider">اسم الفرع</label>
                   <input value={modalBranchName} onChange={(e) => setModalBranchName(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors" />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-400 mb-1 uppercase tracking-wider">يوم الافتتاح (1-31)</label>
                     <input type="number" min="1" max="31" value={modalBranchOpeningDay} onChange={(e) => setModalBranchOpeningDay(e.target.value ? Number(e.target.value) : '')} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors" />
@@ -2477,6 +2912,10 @@ export default function CommissionsPage() {
                         <option key={i+1} value={i+1}>{m}</option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-400 mb-1 uppercase tracking-wider">سنة الافتتاح</label>
+                    <input type="number" min="1900" max="2100" value={modalBranchOpeningYear} onChange={(e) => setModalBranchOpeningYear(e.target.value ? Number(e.target.value) : '')} placeholder="سنة" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-3 py-2 text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors" />
                   </div>
                 </div>
                 <div className="space-y-3">

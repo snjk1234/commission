@@ -90,12 +90,16 @@ export const SUPERVISORS_DATA: SupervisorGroup[] = [
   }
 ];
 
-export function calculateCommissionRate(growth: number, isNew: boolean, branchName: string): number {
+export function calculateCommissionRate(growth: number, isNew: boolean, branchName: string | null | undefined): number {
+  const name = branchName || '';
+  const normalizedBranchName = name.toString().toLowerCase();
+
   if (isNew) {
-    const isMallOrPark = branchName.includes('مول') || 
-                   branchName.includes('بارك') ||
-                   branchName.toLowerCase().includes('mall') ||
-                   branchName.toLowerCase().includes('park');
+    const isMallOrPark =
+      normalizedBranchName.includes('مول') ||
+      normalizedBranchName.includes('بارك') ||
+      normalizedBranchName.includes('mall') ||
+      normalizedBranchName.includes('park');
     return isMallOrPark ? 0.02 : 0.01;
   }
   
